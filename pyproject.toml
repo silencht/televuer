@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "televuer"
+version = "0.0.3"
+description = "XR vision and hand/controller teleoperate interface for unitree robotics"
+authors = [
+    { name = "silencht", email = "silencht@qq.com" }
+]
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+dependencies = [
+    "numpy<2.0.0",
+    "opencv-python",
+    "logging-mp",
+    "vuer[all]==0.0.60"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
