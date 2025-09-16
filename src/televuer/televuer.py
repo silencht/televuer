@@ -100,7 +100,12 @@ class TeleVuer:
         self.process.start()
 
     def vuer_run(self):
-        self.vuer.run()
+        try:
+            self.vuer.run()
+        except KeyboardInterrupt:
+            pass
+        except Exception as e:
+            print(f"Vuer encountered an error: {e}")
 
     async def on_cam_move(self, event, session, fps=60):
         try:
