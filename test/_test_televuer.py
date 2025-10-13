@@ -5,33 +5,36 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 import time
-import numpy as np
-from multiprocessing import shared_memory
 from televuer import TeleVuer
+# image client. if you want to test with real image stream,
+# please copy image_client.py and messaging.py from xr_teleoperate/teleop/image_server to the current directory before running this test script
+# from image_client import ImageClient
 import logging_mp
 logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
 
 def run_test_TeleVuer():
-    # image
-    image_shape = (480, 640 * 2, 3)
-    image_shm = shared_memory.SharedMemory(create=True, size=np.prod(image_shape) * np.uint8().itemsize)
-    image_array = np.ndarray(image_shape, dtype=np.uint8, buffer=image_shm.buf)
+    head_binocular = True
+    head_img_shape = (480, 1280, 3)  # default image
 
-    # from image_server.image_client import ImageClient
-    # import threading
-    # image_client = ImageClient(tv_img_shape = image_shape, tv_img_shm_name = image_shm.name, image_show=True, server_address="127.0.0.1")
-    # image_receive_thread = threading.Thread(target = image_client.receive_process, daemon = True)
-    # image_receive_thread.daemon = True
-    # image_receive_thread.start()
+    # img_client = ImageClient(host="127.0.0.1") # 127.0.0.1 is localhost, 192.168.123.164 is unitree robot's host ip
+    # if not img_client.has_head_cam():
+    #     logger_mp.error("Head camera is required. Please enable head camera on the image server side.")
+    # head_img_shape = img_client.get_head_shape()
+    # head_binocular = img_client.is_binocular()
 
     # xr-mode
     use_hand_track = True
-    tv = TeleVuer(binocular = True, use_hand_tracking = use_hand_track, img_shape = image_shape, img_shm_name = image_shm.name, webrtc=False)
+    tv = TeleVuer(binocular = head_binocular, use_hand_tracking = use_hand_track, img_shape = head_img_shape, webrtc=False)
 
     try:
         input("Press Enter to start TeleVuer test...")
         running = True
         while running:
+            start_time = time.time()
+            # image client
+            # head_img, head_img_fps = img_client.get_head_frame()
+            # tv.set_display_image(head_img)
+            
             logger_mp.info("=" * 80)
             logger_mp.info("Common Data (always available):")
             logger_mp.info(f"head_pose shape: {tv.head_pose.shape}\n{tv.head_pose}\n")
@@ -45,40 +48,45 @@ def run_test_TeleVuer():
                 logger_mp.info(f"right_hand_positions shape: {tv.right_hand_positions.shape}\n{tv.right_hand_positions}\n")
                 logger_mp.info(f"left_hand_orientations shape: {tv.left_hand_orientations.shape}\n{tv.left_hand_orientations}\n")
                 logger_mp.info(f"right_hand_orientations shape: {tv.right_hand_orientations.shape}\n{tv.right_hand_orientations}\n")
-                logger_mp.info(f"left_hand_pinch_state: {tv.left_hand_pinch_state}")
-                logger_mp.info(f"left_hand_pinch_value: {tv.left_hand_pinch_value}")
-                logger_mp.info(f"left_hand_squeeze_state: {tv.left_hand_squeeze_state}")
-                logger_mp.info(f"left_hand_squeeze_value: {tv.left_hand_squeeze_value}")
-                logger_mp.info(f"right_hand_pinch_state: {tv.right_hand_pinch_state}")
-                logger_mp.info(f"right_hand_pinch_value: {tv.right_hand_pinch_value}")
-                logger_mp.info(f"right_hand_squeeze_state: {tv.right_hand_squeeze_state}")
-                logger_mp.info(f"right_hand_squeeze_value: {tv.right_hand_squeeze_value}")
+                logger_mp.info(f"left_hand_pinch: {tv.left_hand_pinch}")
+                logger_mp.info(f"left_hand_pinchValue: {tv.left_hand_pinchValue}")
+                logger_mp.info(f"left_hand_squeeze: {tv.left_hand_squeeze}")
+                logger_mp.info(f"left_hand_squeezeValue: {tv.left_hand_squeezeValue}")
+                logger_mp.info(f"right_hand_pinch: {tv.right_hand_pinch}")
+                logger_mp.info(f"right_hand_pinchValue: {tv.right_hand_pinchValue}")
+                logger_mp.info(f"right_hand_squeeze: {tv.right_hand_squeeze}")
+                logger_mp.info(f"right_hand_squeezeValue: {tv.right_hand_squeezeValue}")
             else:
                 logger_mp.info("Controller Data:")
-                logger_mp.info(f"left_controller_trigger_state: {tv.left_controller_trigger_state}")
-                logger_mp.info(f"left_controller_trigger_value: {tv.left_controller_trigger_value}")
-                logger_mp.info(f"left_controller_squeeze_state: {tv.left_controller_squeeze_state}")
-                logger_mp.info(f"left_controller_squeeze_value: {tv.left_controller_squeeze_value}")
-                logger_mp.info(f"left_controller_thumbstick_state: {tv.left_controller_thumbstick_state}")
-                logger_mp.info(f"left_controller_thumbstick_value: {tv.left_controller_thumbstick_value}")
-                logger_mp.info(f"left_controller_aButton: {tv.left_controller_aButton}")
-                logger_mp.info(f"left_controller_bButton: {tv.left_controller_bButton}")
-                logger_mp.info(f"right_controller_trigger_state: {tv.right_controller_trigger_state}")
-                logger_mp.info(f"right_controller_trigger_value: {tv.right_controller_trigger_value}")
-                logger_mp.info(f"right_controller_squeeze_state: {tv.right_controller_squeeze_state}")
-                logger_mp.info(f"right_controller_squeeze_value: {tv.right_controller_squeeze_value}")
-                logger_mp.info(f"right_controller_thumbstick_state: {tv.right_controller_thumbstick_state}")
-                logger_mp.info(f"right_controller_thumbstick_value: {tv.right_controller_thumbstick_value}")
-                logger_mp.info(f"right_controller_aButton: {tv.right_controller_aButton}")
-                logger_mp.info(f"right_controller_bButton: {tv.right_controller_bButton}")
+                logger_mp.info(f"left_ctrl_trigger: {tv.left_ctrl_trigger}")
+                logger_mp.info(f"left_ctrl_triggerValue: {tv.left_ctrl_triggerValue}")
+                logger_mp.info(f"left_ctrl_squeeze: {tv.left_ctrl_squeeze}")
+                logger_mp.info(f"left_ctrl_squeezeValue: {tv.left_ctrl_squeezeValue}")
+                logger_mp.info(f"left_ctrl_thumbstick: {tv.left_ctrl_thumbstick}")
+                logger_mp.info(f"left_ctrl_thumbstickValue: {tv.left_ctrl_thumbstickValue}")
+                logger_mp.info(f"left_ctrl_aButton: {tv.left_ctrl_aButton}")
+                logger_mp.info(f"left_ctrl_bButton: {tv.left_ctrl_bButton}")
+                logger_mp.info(f"right_ctrl_trigger: {tv.right_ctrl_trigger}")
+                logger_mp.info(f"right_ctrl_triggerValue: {tv.right_ctrl_triggerValue}")
+                logger_mp.info(f"right_ctrl_squeeze: {tv.right_ctrl_squeeze}")
+                logger_mp.info(f"right_ctrl_squeezeValue: {tv.right_ctrl_squeezeValue}")
+                logger_mp.info(f"right_ctrl_thumbstick: {tv.right_ctrl_thumbstick}")
+                logger_mp.info(f"right_ctrl_thumbstickValue: {tv.right_ctrl_thumbstickValue}")
+                logger_mp.info(f"right_ctrl_aButton: {tv.right_ctrl_aButton}")
+                logger_mp.info(f"right_ctrl_bButton: {tv.right_ctrl_bButton}")
             logger_mp.info("=" * 80)
-            time.sleep(0.03)
+
+            current_time = time.time()
+            time_elapsed = current_time - start_time
+            sleep_time = max(0, 0.3 - time_elapsed)
+            time.sleep(sleep_time)
+            logger_mp.debug(f"main process sleep: {sleep_time}")
     except KeyboardInterrupt:
         running = False
         logger_mp.warning("KeyboardInterrupt, exiting program...")
     finally:
-        image_shm.unlink()
-        image_shm.close()
+        tv.close()
+        # img_client.close()
         logger_mp.warning("Finally, exiting program...")
         exit(0)
 

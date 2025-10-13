@@ -3,32 +3,42 @@ from vuer.schemas import ImageBackground, Hands, MotionControllers, WebRTCVideoP
 from multiprocessing import Value, Array, Process, shared_memory
 import numpy as np
 import asyncio
+import threading
 import cv2
 import os
 from pathlib import Path
 
 
 class TeleVuer:
-    def __init__(self, binocular: bool, use_hand_tracking: bool, img_shape, img_shm_name, cert_file=None, key_file=None, ngrok=False, webrtc=False):
+    def __init__(self, binocular: bool, use_hand_tracking: bool, img_shape, cert_file=None, key_file=None, ngrok=False, webrtc=False):
         """
         TeleVuer class for OpenXR-based XR teleoperate applications.
         This class handles the communication with the Vuer server and manages the shared memory for image and pose data.
 
         :param binocular: bool, whether the application is binocular (stereoscopic) or monocular.
         :param use_hand_tracking: bool, whether to use hand tracking or controller tracking.
-        :param img_shape: tuple, shape of the image (height, width, channels).
-        :param img_shm_name: str, name of the shared memory for the image.
+        :param img_shape: tuple, shape of the image (height, width).
         :param cert_file: str, path to the SSL certificate file.
         :param key_file: str, path to the SSL key file.
         :param ngrok: bool, whether to use ngrok for tunneling.
+        :param webrtc: bool, whether to use WebRTC for real-time communication.
         """
         self.binocular = binocular
         self.use_hand_tracking = use_hand_tracking
-        self.img_height = img_shape[0]
+        self.img_shape = (img_shape[0], img_shape[1], 3)
+        self.img2display_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.img_shape) * np.uint8().itemsize)
+        self.img2display = np.ndarray(self.img_shape, dtype=np.uint8, buffer=self.img2display_shm.buf)
+
+        self.latest_frame = None
+        self.new_frame_event = threading.Event()
+        self.writer_thread = threading.Thread(target=self._img2display_writer, daemon=True)
+        self.writer_thread.start()
+
+        self.img_height = self.img_shape[0]
         if self.binocular:
-            self.img_width  = img_shape[1] // 2
+            self.img_width  = self.img_shape[1] // 2
         else:
-            self.img_width  = img_shape[1]
+            self.img_width  = self.img_shape[1]
         
         current_module_dir = Path(__file__).resolve().parent.parent.parent
         if cert_file is None:
@@ -46,10 +56,6 @@ class TeleVuer:
             self.vuer.add_handler("HAND_MOVE")(self.on_hand_move)
         else:
             self.vuer.add_handler("CONTROLLER_MOVE")(self.on_controller_move)
-
-        existing_shm = shared_memory.SharedMemory(name=img_shm_name)
-        self.img_array = np.ndarray(img_shape, dtype=np.uint8, buffer=existing_shm.buf)
-
         self.webrtc = webrtc
         if self.binocular and not self.webrtc:
             self.vuer.spawn(start=False)(self.main_image_binocular)
@@ -67,45 +73,59 @@ class TeleVuer:
             self.left_hand_orientation_shared = Array('d', 25 * 9, lock=True)
             self.right_hand_orientation_shared = Array('d', 25 * 9, lock=True)
 
-            self.left_pinch_state_shared = Value('b', False, lock=True)
-            self.left_pinch_value_shared = Value('d', 0.0, lock=True)
-            self.left_squeeze_state_shared = Value('b', False, lock=True)
-            self.left_squeeze_value_shared = Value('d', 0.0, lock=True)
+            self.left_hand_pinch_shared = Value('b', False, lock=True)
+            self.left_hand_pinchValue_shared = Value('d', 0.0, lock=True)
+            self.left_hand_squeeze_shared = Value('b', False, lock=True)
+            self.left_hand_squeezeValue_shared = Value('d', 0.0, lock=True)
 
-            self.right_pinch_state_shared = Value('b', False, lock=True)
-            self.right_pinch_value_shared = Value('d', 0.0, lock=True)
-            self.right_squeeze_state_shared = Value('b', False, lock=True)
-            self.right_squeeze_value_shared = Value('d', 0.0, lock=True)
+            self.right_hand_pinch_shared = Value('b', False, lock=True)
+            self.right_hand_pinchValue_shared = Value('d', 0.0, lock=True)
+            self.right_hand_squeeze_shared = Value('b', False, lock=True)
+            self.right_hand_squeezeValue_shared = Value('d', 0.0, lock=True)
         else:
-            self.left_trigger_state_shared = Value('b', False, lock=True)
-            self.left_trigger_value_shared = Value('d', 0.0, lock=True)
-            self.left_squeeze_state_shared = Value('b', False, lock=True)
-            self.left_squeeze_value_shared = Value('d', 0.0, lock=True)
-            self.left_thumbstick_state_shared = Value('b', False, lock=True)
-            self.left_thumbstick_value_shared = Array('d', 2, lock=True)
-            self.left_aButton_shared = Value('b', False, lock=True)
-            self.left_bButton_shared = Value('b', False, lock=True)
+            self.left_ctrl_trigger_shared = Value('b', False, lock=True)
+            self.left_ctrl_triggerValue_shared = Value('d', 0.0, lock=True)
+            self.left_ctrl_squeeze_shared = Value('b', False, lock=True)
+            self.left_ctrl_squeezeValue_shared = Value('d', 0.0, lock=True)
+            self.left_ctrl_thumbstick_shared = Value('b', False, lock=True)
+            self.left_ctrl_thumbstickValue_shared = Array('d', 2, lock=True)
+            self.left_ctrl_aButton_shared = Value('b', False, lock=True)
+            self.left_ctrl_bButton_shared = Value('b', False, lock=True)
 
-            self.right_trigger_state_shared = Value('b', False, lock=True)
-            self.right_trigger_value_shared = Value('d', 0.0, lock=True)
-            self.right_squeeze_state_shared = Value('b', False, lock=True)
-            self.right_squeeze_value_shared = Value('d', 0.0, lock=True)
-            self.right_thumbstick_state_shared = Value('b', False, lock=True)
-            self.right_thumbstick_value_shared = Array('d', 2, lock=True)
-            self.right_aButton_shared = Value('b', False, lock=True)
-            self.right_bButton_shared = Value('b', False, lock=True)
+            self.right_ctrl_trigger_shared = Value('b', False, lock=True)
+            self.right_ctrl_triggerValue_shared = Value('d', 0.0, lock=True)
+            self.right_ctrl_squeeze_shared = Value('b', False, lock=True)
+            self.right_ctrl_squeezeValue_shared = Value('d', 0.0, lock=True)
+            self.right_ctrl_thumbstick_shared = Value('b', False, lock=True)
+            self.right_ctrl_thumbstickValue_shared = Array('d', 2, lock=True)
+            self.right_ctrl_aButton_shared = Value('b', False, lock=True)
+            self.right_ctrl_bButton_shared = Value('b', False, lock=True)
 
-        self.process = Process(target=self.vuer_run)
+        self.process = Process(target=self._vuer_run)
         self.process.daemon = True
         self.process.start()
+    
+    def _vuer_run(self):
+        self.vuer.run()
 
-    def vuer_run(self):
-        try:
-            self.vuer.run()
-        except KeyboardInterrupt:
-            pass
-        except Exception as e:
-            print(f"Vuer encountered an error: {e}")
+    def _img2display_writer(self):
+        while True:
+            self.new_frame_event.wait()
+            self.new_frame_event.clear()
+            self.latest_frame = cv2.cvtColor(self.latest_frame, cv2.COLOR_BGR2RGB)
+            self.img2display[:] = self.latest_frame #.copy()
+    
+    def set_display_image(self, image):
+        self.latest_frame = image
+        self.new_frame_event.set()
+
+    
+    def close(self):
+        self.process.terminate()
+        self.process.join(timeout=0.5)
+        self.img2display_shm.close()
+        self.img2display_shm.unlink()
+        self.writer_thread.join(timeout=0.5)
 
     async def on_cam_move(self, event, session, fps=60):
         try:
@@ -115,49 +135,53 @@ class TeleVuer:
             pass
 
     async def on_controller_move(self, event, session, fps=60):
+        """https://docs.vuer.ai/en/latest/examples/20_motion_controllers.html"""
         try:
+            # ControllerData
             with self.left_arm_pose_shared.get_lock():
                 self.left_arm_pose_shared[:] = event.value["left"]
             with self.right_arm_pose_shared.get_lock():
                 self.right_arm_pose_shared[:] = event.value["right"]
+            # ControllerState
+            left_controller = event.value["leftState"]
+            right_controller = event.value["rightState"]
 
-            left_controller_state = event.value["leftState"]
-            right_controller_state = event.value["rightState"]
-
-            def extract_controller_states(state_dict, prefix):
+            def extract_controllers(controllerState, prefix):
                 # trigger
-                with getattr(self, f"{prefix}_trigger_state_shared").get_lock():
-                    getattr(self, f"{prefix}_trigger_state_shared").value = bool(state_dict.get("trigger", False))
-                with getattr(self, f"{prefix}_trigger_value_shared").get_lock():
-                    getattr(self, f"{prefix}_trigger_value_shared").value = float(state_dict.get("triggerValue", 0.0))
+                with getattr(self, f"{prefix}_ctrl_trigger_shared").get_lock():
+                    getattr(self, f"{prefix}_ctrl_trigger_shared").value = bool(controllerState.get("trigger", False))
+                with getattr(self, f"{prefix}_ctrl_triggerValue_shared").get_lock():
+                    getattr(self, f"{prefix}_ctrl_triggerValue_shared").value = float(controllerState.get("triggerValue", 0.0))
                 # squeeze
-                with getattr(self, f"{prefix}_squeeze_state_shared").get_lock():
-                    getattr(self, f"{prefix}_squeeze_state_shared").value = bool(state_dict.get("squeeze", False))
-                with getattr(self, f"{prefix}_squeeze_value_shared").get_lock():
-                    getattr(self, f"{prefix}_squeeze_value_shared").value = float(state_dict.get("squeezeValue", 0.0))
+                with getattr(self, f"{prefix}_ctrl_squeeze_shared").get_lock():
+                    getattr(self, f"{prefix}_ctrl_squeeze_shared").value = bool(controllerState.get("squeeze", False))
+                with getattr(self, f"{prefix}_ctrl_squeezeValue_shared").get_lock():
+                    getattr(self, f"{prefix}_ctrl_squeezeValue_shared").value = float(controllerState.get("squeezeValue", 0.0))
                 # thumbstick
-                with getattr(self, f"{prefix}_thumbstick_state_shared").get_lock():
-                    getattr(self, f"{prefix}_thumbstick_state_shared").value = bool(state_dict.get("thumbstick", False))
-                with getattr(self, f"{prefix}_thumbstick_value_shared").get_lock():
-                    getattr(self, f"{prefix}_thumbstick_value_shared")[:] = state_dict.get("thumbstickValue", [0.0, 0.0])
+                with getattr(self, f"{prefix}_ctrl_thumbstick_shared").get_lock():
+                    getattr(self, f"{prefix}_ctrl_thumbstick_shared").value = bool(controllerState.get("thumbstick", False))
+                with getattr(self, f"{prefix}_ctrl_thumbstickValue_shared").get_lock():
+                    getattr(self, f"{prefix}_ctrl_thumbstickValue_shared")[:] = controllerState.get("thumbstickValue", [0.0, 0.0])
                 # buttons
-                with getattr(self, f"{prefix}_aButton_shared").get_lock():
-                    getattr(self, f"{prefix}_aButton_shared").value = bool(state_dict.get("aButton", False))
-                with getattr(self, f"{prefix}_bButton_shared").get_lock():
-                    getattr(self, f"{prefix}_bButton_shared").value = bool(state_dict.get("bButton", False))
+                with getattr(self, f"{prefix}_ctrl_aButton_shared").get_lock():
+                    getattr(self, f"{prefix}_ctrl_aButton_shared").value = bool(controllerState.get("aButton", False))
+                with getattr(self, f"{prefix}_ctrl_bButton_shared").get_lock():
+                    getattr(self, f"{prefix}_ctrl_bButton_shared").value = bool(controllerState.get("bButton", False))
 
-            extract_controller_states(left_controller_state, "left")
-            extract_controller_states(right_controller_state, "right")
+            extract_controllers(left_controller, "left")
+            extract_controllers(right_controller, "right")
         except:
             pass
 
     async def on_hand_move(self, event, session, fps=60):
+        """https://docs.vuer.ai/en/latest/examples/19_hand_tracking.html"""
         try:
+            # HandsData
             left_hand_data = event.value["left"]
             right_hand_data = event.value["right"]
-            left_hand_state = event.value["leftState"]
-            right_hand_state = event.value["rightState"]
-
+            left_hand = event.value["leftState"]
+            right_hand = event.value["rightState"]
+            # HandState
             def extract_hand_poses(hand_data, arm_pose_shared, hand_position_shared, hand_orientation_shared):
                 with arm_pose_shared.get_lock():
                     arm_pose_shared[:] = hand_data[0:16]
@@ -176,22 +200,22 @@ class TeleVuer:
                             hand_data[base + 8], hand_data[base + 9], hand_data[base + 10],
                         ]
 
-            def extract_hand_states(state_dict, prefix):
+            def extract_hands(handState, prefix):
                 # pinch
-                with getattr(self, f"{prefix}_pinch_state_shared").get_lock():
-                    getattr(self, f"{prefix}_pinch_state_shared").value = bool(state_dict.get("pinch", False))
-                with getattr(self, f"{prefix}_pinch_value_shared").get_lock():
-                    getattr(self, f"{prefix}_pinch_value_shared").value = float(state_dict.get("pinchValue", 0.0))
+                with getattr(self, f"{prefix}_hand_pinch_shared").get_lock():
+                    getattr(self, f"{prefix}_hand_pinch_shared").value = bool(handState.get("pinch", False))
+                with getattr(self, f"{prefix}_hand_pinchValue_shared").get_lock():
+                    getattr(self, f"{prefix}_hand_pinchValue_shared").value = float(handState.get("pinchValue", 0.0))
                 # squeeze
-                with getattr(self, f"{prefix}_squeeze_state_shared").get_lock():
-                    getattr(self, f"{prefix}_squeeze_state_shared").value = bool(state_dict.get("squeeze", False))
-                with getattr(self, f"{prefix}_squeeze_value_shared").get_lock():
-                    getattr(self, f"{prefix}_squeeze_value_shared").value = float(state_dict.get("squeezeValue", 0.0))
+                with getattr(self, f"{prefix}_hand_squeeze_shared").get_lock():
+                    getattr(self, f"{prefix}_hand_squeeze_shared").value = bool(handState.get("squeeze", False))
+                with getattr(self, f"{prefix}_hand_squeezeValue_shared").get_lock():
+                    getattr(self, f"{prefix}_hand_squeezeValue_shared").value = float(handState.get("squeezeValue", 0.0))
 
             extract_hand_poses(left_hand_data, self.left_arm_pose_shared, self.left_hand_position_shared, self.left_hand_orientation_shared)
             extract_hand_poses(right_hand_data, self.right_arm_pose_shared, self.right_hand_position_shared, self.right_hand_orientation_shared)
-            extract_hand_states(left_hand_state, "left")
-            extract_hand_states(right_hand_state, "right")
+            extract_hands(left_hand, "left")
+            extract_hands(right_hand, "right")
 
         except:
             pass
@@ -217,15 +241,13 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
-
         while True:
-            display_image = cv2.cvtColor(self.img_array, cv2.COLOR_BGR2RGB)
-            # aspect_ratio = self.img_width / self.img_height
+            aspect_ratio = self.img_width / self.img_height
             session.upsert(
                 [
                     ImageBackground(
-                        display_image[:, :self.img_width],
-                        aspect=1.778,
+                        self.img2display[:, :self.img_width],
+                        aspect=aspect_ratio,
                         height=1,
                         distanceToCamera=1,
                         # The underlying rendering engine supported a layer binary bitmask for both objects and the camera. 
@@ -233,18 +255,18 @@ class TeleVuer:
                         # Note that these two masks are associated with left eye’s camera and the right eye’s camera.
                         layers=1,
                         format="jpeg",
-                        quality=100,
+                        quality=80,
                         key="background-left",
                         interpolate=True,
                     ),
                     ImageBackground(
-                        display_image[:, self.img_width:],
-                        aspect=1.778,
+                        self.img2display[:, self.img_width:],
+                        aspect=aspect_ratio,
                         height=1,
                         distanceToCamera=1,
                         layers=2,
                         format="jpeg",
-                        quality=100,
+                        quality=80,
                         key="background-right",
                         interpolate=True,
                     ),
@@ -252,7 +274,7 @@ class TeleVuer:
                 to="bgChildren",
             )
             # 'jpeg' encoding should give you about 30fps with a 16ms wait in-between.
-            await asyncio.sleep(0.016 * 2)
+            await asyncio.sleep(0.016)
 
     async def main_image_monocular(self, session, fps=60):
         if self.use_hand_tracking:
@@ -277,17 +299,16 @@ class TeleVuer:
             )
 
         while True:
-            display_image = cv2.cvtColor(self.img_array, cv2.COLOR_BGR2RGB)
-            # aspect_ratio = self.img_width / self.img_height
+            aspect_ratio = self.img_width / self.img_height
             session.upsert(
                 [
                     ImageBackground(
-                        display_image,
-                        aspect=1.778,
+                        self.img2display,
+                        aspect=aspect_ratio,
                         height=1,
                         distanceToCamera=1,
                         format="jpeg",
-                        quality=50,
+                        quality=80,
                         key="background-mono",
                         interpolate=True,
                     ),
@@ -297,6 +318,7 @@ class TeleVuer:
             await asyncio.sleep(0.016)
 
     async def main_image_webrtc(self, session, fps=60):
+        aspect_ratio = self.img_width / self.img_height
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -323,7 +345,7 @@ class TeleVuer:
                 src="https://10.0.7.49:8080/offer",
                 iceServer={},
                 key="webrtc",
-                aspect=1.778,
+                aspect=aspect_ratio,
                 height = 7,
             ),
             to="bgChildren",
@@ -375,146 +397,146 @@ class TeleVuer:
             return np.array(self.right_hand_orientation_shared[:]).reshape(25, 9).reshape(25, 3, 3, order="F")
 
     @property
-    def left_hand_pinch_state(self):
+    def left_hand_pinch(self):
         """bool, whether left hand is pinching."""
-        with self.left_pinch_state_shared.get_lock():
-            return self.left_pinch_state_shared.value
+        with self.left_hand_pinch_shared.get_lock():
+            return self.left_hand_pinch_shared.value
 
     @property
-    def left_hand_pinch_value(self):
+    def left_hand_pinchValue(self):
         """float, pinch strength of left hand."""
-        with self.left_pinch_value_shared.get_lock():
-            return self.left_pinch_value_shared.value
+        with self.left_hand_pinchValue_shared.get_lock():
+            return self.left_hand_pinchValue_shared.value
 
     @property
-    def left_hand_squeeze_state(self):
+    def left_hand_squeeze(self):
         """bool, whether left hand is squeezing."""
-        with self.left_squeeze_state_shared.get_lock():
-            return self.left_squeeze_state_shared.value
+        with self.left_hand_squeeze_shared.get_lock():
+            return self.left_hand_squeeze_shared.value
 
     @property
-    def left_hand_squeeze_value(self):
+    def left_hand_squeezeValue(self):
         """float, squeeze strength of left hand."""
-        with self.left_squeeze_value_shared.get_lock():
-            return self.left_squeeze_value_shared.value
+        with self.left_hand_squeezeValue_shared.get_lock():
+            return self.left_hand_squeezeValue_shared.value
 
     @property
-    def right_hand_pinch_state(self):
+    def right_hand_pinch(self):
         """bool, whether right hand is pinching."""
-        with self.right_pinch_state_shared.get_lock():
-            return self.right_pinch_state_shared.value
+        with self.right_hand_pinch_shared.get_lock():
+            return self.right_hand_pinch_shared.value
 
     @property
-    def right_hand_pinch_value(self):
+    def right_hand_pinchValue(self):
         """float, pinch strength of right hand."""
-        with self.right_pinch_value_shared.get_lock():
-            return self.right_pinch_value_shared.value
+        with self.right_hand_pinchValue_shared.get_lock():
+            return self.right_hand_pinchValue_shared.value
 
     @property
-    def right_hand_squeeze_state(self):
+    def right_hand_squeeze(self):
         """bool, whether right hand is squeezing."""
-        with self.right_squeeze_state_shared.get_lock():
-            return self.right_squeeze_state_shared.value
+        with self.right_hand_squeeze_shared.get_lock():
+            return self.right_hand_squeeze_shared.value
 
     @property
-    def right_hand_squeeze_value(self):
+    def right_hand_squeezeValue(self):
         """float, squeeze strength of right hand."""
-        with self.right_squeeze_value_shared.get_lock():
-            return self.right_squeeze_value_shared.value
+        with self.right_hand_squeezeValue_shared.get_lock():
+            return self.right_hand_squeezeValue_shared.value
 
     # ==================== Controller Data ====================
     @property
-    def left_controller_trigger_state(self):
+    def left_ctrl_trigger(self):
         """bool, left controller trigger pressed or not."""
-        with self.left_trigger_state_shared.get_lock():
-            return self.left_trigger_state_shared.value
+        with self.left_ctrl_trigger_shared.get_lock():
+            return self.left_ctrl_trigger_shared.value
 
     @property
-    def left_controller_trigger_value(self):
+    def left_ctrl_triggerValue(self):
         """float, left controller trigger analog value (0.0 ~ 1.0)."""
-        with self.left_trigger_value_shared.get_lock():
-            return self.left_trigger_value_shared.value
+        with self.left_ctrl_triggerValue_shared.get_lock():
+            return self.left_ctrl_triggerValue_shared.value
 
     @property
-    def left_controller_squeeze_state(self):
+    def left_ctrl_squeeze(self):
         """bool, left controller squeeze pressed or not."""
-        with self.left_squeeze_state_shared.get_lock():
-            return self.left_squeeze_state_shared.value
+        with self.left_ctrl_squeeze_shared.get_lock():
+            return self.left_ctrl_squeeze_shared.value
 
     @property
-    def left_controller_squeeze_value(self):
+    def left_ctrl_squeezeValue(self):
         """float, left controller squeeze analog value (0.0 ~ 1.0)."""
-        with self.left_squeeze_value_shared.get_lock():
-            return self.left_squeeze_value_shared.value
+        with self.left_ctrl_squeezeValue_shared.get_lock():
+            return self.left_ctrl_squeezeValue_shared.value
 
     @property
-    def left_controller_thumbstick_state(self):
+    def left_ctrl_thumbstick(self):
         """bool, whether left thumbstick is touched or clicked."""
-        with self.left_thumbstick_state_shared.get_lock():
-            return self.left_thumbstick_state_shared.value
+        with self.left_ctrl_thumbstick_shared.get_lock():
+            return self.left_ctrl_thumbstick_shared.value
 
     @property
-    def left_controller_thumbstick_value(self):
+    def left_ctrl_thumbstickValue(self):
         """np.ndarray, shape (2,), left thumbstick 2D axis values (x, y)."""
-        with self.left_thumbstick_value_shared.get_lock():
-            return np.array(self.left_thumbstick_value_shared[:])
+        with self.left_ctrl_thumbstickValue_shared.get_lock():
+            return np.array(self.left_ctrl_thumbstickValue_shared[:])
 
     @property
-    def left_controller_aButton(self):
+    def left_ctrl_aButton(self):
         """bool, left controller 'A' button pressed."""
-        with self.left_aButton_shared.get_lock():
-            return self.left_aButton_shared.value
+        with self.left_ctrl_aButton_shared.get_lock():
+            return self.left_ctrl_aButton_shared.value
 
     @property
-    def left_controller_bButton(self):
+    def left_ctrl_bButton(self):
         """bool, left controller 'B' button pressed."""
-        with self.left_bButton_shared.get_lock():
-            return self.left_bButton_shared.value
+        with self.left_ctrl_bButton_shared.get_lock():
+            return self.left_ctrl_bButton_shared.value
 
     @property
-    def right_controller_trigger_state(self):
+    def right_ctrl_trigger(self):
         """bool, right controller trigger pressed or not."""
-        with self.right_trigger_state_shared.get_lock():
-            return self.right_trigger_state_shared.value
+        with self.right_ctrl_trigger_shared.get_lock():
+            return self.right_ctrl_trigger_shared.value
 
     @property
-    def right_controller_trigger_value(self):
+    def right_ctrl_triggerValue(self):
         """float, right controller trigger analog value (0.0 ~ 1.0)."""
-        with self.right_trigger_value_shared.get_lock():
-            return self.right_trigger_value_shared.value
+        with self.right_ctrl_triggerValue_shared.get_lock():
+            return self.right_ctrl_triggerValue_shared.value
 
     @property
-    def right_controller_squeeze_state(self):
+    def right_ctrl_squeeze(self):
         """bool, right controller squeeze pressed or not."""
-        with self.right_squeeze_state_shared.get_lock():
-            return self.right_squeeze_state_shared.value
+        with self.right_ctrl_squeeze_shared.get_lock():
+            return self.right_ctrl_squeeze_shared.value
 
     @property
-    def right_controller_squeeze_value(self):
+    def right_ctrl_squeezeValue(self):
         """float, right controller squeeze analog value (0.0 ~ 1.0)."""
-        with self.right_squeeze_value_shared.get_lock():
-            return self.right_squeeze_value_shared.value
+        with self.right_ctrl_squeezeValue_shared.get_lock():
+            return self.right_ctrl_squeezeValue_shared.value
 
     @property
-    def right_controller_thumbstick_state(self):
+    def right_ctrl_thumbstick(self):
         """bool, whether right thumbstick is touched or clicked."""
-        with self.right_thumbstick_state_shared.get_lock():
-            return self.right_thumbstick_state_shared.value
+        with self.right_ctrl_thumbstick_shared.get_lock():
+            return self.right_ctrl_thumbstick_shared.value
 
     @property
-    def right_controller_thumbstick_value(self):
+    def right_ctrl_thumbstickValue(self):
         """np.ndarray, shape (2,), right thumbstick 2D axis values (x, y)."""
-        with self.right_thumbstick_value_shared.get_lock():
-            return np.array(self.right_thumbstick_value_shared[:])
+        with self.right_ctrl_thumbstickValue_shared.get_lock():
+            return np.array(self.right_ctrl_thumbstickValue_shared[:])
 
     @property
-    def right_controller_aButton(self):
+    def right_ctrl_aButton(self):
         """bool, right controller 'A' button pressed."""
-        with self.right_aButton_shared.get_lock():
-            return self.right_aButton_shared.value
+        with self.right_ctrl_aButton_shared.get_lock():
+            return self.right_ctrl_aButton_shared.value
 
     @property
-    def right_controller_bButton(self):
+    def right_ctrl_bButton(self):
         """bool, right controller 'B' button pressed."""
-        with self.right_bButton_shared.get_lock():
-            return self.right_bButton_shared.value
+        with self.right_ctrl_bButton_shared.get_lock():
+            return self.right_ctrl_bButton_shared.value

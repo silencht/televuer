@@ -139,49 +139,61 @@ CONST_LEFT_ARM_POSE = np.array([[1, 0, 0, -0.15],
 CONST_HAND_ROT = np.tile(np.eye(3)[None, :, :], (25, 1, 1))
 
 @dataclass
-class TeleStateData:
+class TeleData:
+    head_pose: np.ndarray                  # (4,4) SE(3) pose of head matrix
+    left_wrist_pose: np.ndarray            # (4,4) SE(3) pose of left wrist of arm
+    right_wrist_pose: np.ndarray           # (4,4) SE(3) pose of right wrist of arm
     # hand tracking
-    left_pinch_state: bool = False         # True if index and thumb are pinching
-    left_squeeze_state: bool = False       # True if hand is making a fist
-    left_squeeze_value: float = 0.0        # (0.0 ~ 1.0) degree of hand squeeze
-    right_pinch_state: bool = False        # True if index and thumb are pinching
-    right_squeeze_state: bool = False      # True if hand is making a fist
-    right_squeeze_value: float = 0.0       # (0.0 ~ 1.0) degree of hand squeeze
+    # https://docs.vuer.ai/en/latest/examples/19_hand_tracking.html
+    # https://immersive-web.github.io/webxr-hand-input/
+    # HandsData, (25,16) SE3 => (25,3) pos + (25,3,3) rot
+    left_hand_pos: np.ndarray = None       # (25,3) 3D positions of left hand joints
+    right_hand_pos: np.ndarray = None      # (25,3) 3D positions of right hand joints
+    left_hand_rot: np.ndarray  = None      # (25,3,3) rotation matrices of left hand joints
+    right_hand_rot: np.ndarray = None      # (25,3,3) rotation matrices of right hand joints
+    # HandState
+    left_hand_pinch: bool = False          # True if index and thumb are pinching
+    left_hand_pinchValue: float = 10.0     # float (~15.0​​ → 0.0) pinch distance between index and thumb
+    left_hand_squeeze: bool = False        # True if hand is making a fist
+    left_hand_squeezeValue: float = 0.0    # (0.0 → 1.0) degree of hand squeeze
+
+    right_hand_pinch: bool = False         # True if index and thumb are pinching
+    right_hand_pinchValue: float = 10.0    # float (~15.0​​ → 0.0) pinch distance between index and thumb
+    right_hand_squeeze: bool = False       # True if hand is making a fist
+    right_hand_squeezeValue: float = 0.0   # (0.0 → 1.0) degree of hand squeeze
 
     # controller tracking
-    left_trigger_state: bool = False       # True if trigger is actively pressed
-    left_squeeze_ctrl_state: bool = False  # True if grip button is pressed
-    left_squeeze_ctrl_value: float = 0.0   # (0.0 ~ 1.0) grip pull depth
-    left_thumbstick_state: bool = False    # True if thumbstick button is pressed
-    left_thumbstick_value: np.ndarray = field(default_factory=lambda: np.zeros(2)) # 2D vector (x, y), normalized
-    left_aButton: bool = False             # True if A button is pressed
-    left_bButton: bool = False             # True if B button is pressed
-    right_trigger_state: bool = False      # True if trigger is actively pressed
-    right_squeeze_ctrl_state: bool = False # True if grip button is pressed
-    right_squeeze_ctrl_value: float = 0.0  # (0.0 ~ 1.0) grip pull depth
-    right_thumbstick_state: bool = False   # True if thumbstick button is pressed
-    right_thumbstick_value: np.ndarray = field(default_factory=lambda: np.zeros(2)) # 2D vector (x, y), normalized
-    right_aButton: bool = False            # True if A button is pressed
-    right_bButton: bool = False            # True if B button is pressed
-
-@dataclass
-class TeleData:
-    head_pose: np.ndarray       # (4,4) SE(3) pose of head matrix
-    left_arm_pose: np.ndarray   # (4,4) SE(3) pose of left arm
-    right_arm_pose: np.ndarray  # (4,4) SE(3) pose of right arm
-    left_hand_pos: np.ndarray = None  # (25,3) 3D positions of left hand joints
-    right_hand_pos: np.ndarray = None # (25,3) 3D positions of right hand joints
-    left_hand_rot: np.ndarray  = None # (25,3,3) rotation matrices of left hand joints
-    right_hand_rot: np.ndarray = None # (25,3,3) rotation matrices of right hand joints
-    left_pinch_value: float = None    # float (1x.0 ~ 0.0) pinch distance between index and thumb
-    right_pinch_value: float = None   # float (1x.0 ~ 0.0) pinch distance between index and thumb
-    left_trigger_value: float = None  # float (10.0 ~ 0.0) trigger pull depth
-    right_trigger_value: float = None # float (10.0 ~ 0.0) trigger pull depth
-    tele_state: TeleStateData = field(default_factory=TeleStateData)
+    # https://docs.vuer.ai/en/latest/examples/20_motion_controllers.html
+    # https://immersive-web.github.io/webxr-gamepads-module/
+    left_ctrl_trigger: bool = False        # True if trigger is actively pressed
+    left_ctrl_triggerValue: float = 10.0   # float (10.0 → 0.0) trigger pull depth, 0.0 means fully pressed (for align with hand pinch value's logic)
+    left_ctrl_squeeze: bool = False        # True if grip button is pressed
+    left_ctrl_squeezeValue: float = 0.0    # (0.0 → 1.0) grip pull depth, 0.0 means no press
+    left_ctrl_aButton: bool = False        # True if A(X) button is pressed
+    left_ctrl_bButton: bool = False        # True if B(Y) button is pressed
+    left_ctrl_thumbstick: bool = False     # True if thumbstick button is pressed
+    left_ctrl_thumbstickValue: np.ndarray = field(default_factory=lambda: np.zeros(2)) # 2D vector (x, y), normalized
+    """ thumbstickValue explanation:
+                    front (0,-1)
+                       ^
+                       |
+      left (-1,0) < —— o —— > right (1,0)      and 'o' is at (0, 0)
+                       |
+                       v
+                    back (0,1)
+    """
+    right_ctrl_trigger: bool = False       # True if trigger is actively pressed
+    right_ctrl_triggerValue: float = 10.0  # float (10.0 → 0.0) trigger pull depth, 0.0 means fully pressed (for align  with hand pinch value's logic)
+    right_ctrl_squeeze: bool = False       # True if grip button is pressed
+    right_ctrl_squeezeValue: float = 0.0   # (0.0 → 1.0) grip pull depth, 0.0 means no press
+    right_ctrl_aButton: bool = False       # True if A button is pressed
+    right_ctrl_bButton: bool = False       # True if B button is pressed
+    right_ctrl_thumbstick: bool = False    # True if thumbstick button is pressed
+    right_ctrl_thumbstickValue: np.ndarray = field(default_factory=lambda: np.zeros(2)) # 2D vector (x, y), normalized
 
 
 class TeleVuerWrapper:
-    def __init__(self, binocular: bool, use_hand_tracking: bool, img_shape, img_shm_name, return_state_data: bool = True, return_hand_rot_data: bool = False,
+    def __init__(self, binocular: bool, use_hand_tracking: bool, img_shape, return_hand_rot_data: bool = False,
                        cert_file = None, key_file = None, ngrok = False, webrtc = False):
         """
         TeleVuerWrapper is a wrapper for the TeleVuer class, which handles XR device's data suit for robot control.
@@ -190,19 +202,18 @@ class TeleVuerWrapper:
         :param binocular: A boolean indicating whether the head camera device is binocular or not.
         :param use_hand_tracking: A boolean indicating whether to use hand tracking or use controller tracking.
         :param img_shape: The shape of the image to be processed.
-        :param img_shm_name: The name of the shared memory for the image.
-        :param return_state: A boolean indicating whether to return the state of the hand or controller.
-        :param return_hand_rot: A boolean indicating whether to return the hand rotation data.
+        :param return_hand_rot_data: A boolean indicating whether to return the hand rotation data.
         :param cert_file: The path to the certificate file for secure connection.
         :param key_file: The path to the key file for secure connection.
+        :param ngrok: A boolean indicating whether to use ngrok for remote access.
+        :param webrtc: A boolean indicating whether to use WebRTC for real-time communication.
         """
         self.use_hand_tracking = use_hand_tracking
-        self.return_state_data = return_state_data
         self.return_hand_rot_data = return_hand_rot_data
-        self.tvuer = TeleVuer(binocular, use_hand_tracking, img_shape, img_shm_name, cert_file=cert_file, key_file=key_file,
-                                ngrok=ngrok, webrtc=webrtc)
+        self.tvuer = TeleVuer(binocular, use_hand_tracking, img_shape, cert_file=cert_file, key_file=key_file,
+                              ngrok=ngrok, webrtc=webrtc)
     
-    def get_motion_state_data(self):
+    def get_tele_data(self):
         """
         Get processed motion state data from the TeleVuer instance.
 
@@ -223,6 +234,7 @@ class TeleVuerWrapper:
         # TeleVuer (Vuer) obtains all raw data under the (basis) OpenXR Convention.
         Bxr_world_head, head_pose_is_valid = safe_mat_update(CONST_HEAD_POSE, self.tvuer.head_pose)
 
+        # hand tracking
         if self.use_hand_tracking:
             # 'Arm' pose data follows (basis) OpenXR Convention and (initial pose) OpenXR Arm Convention.
             left_IPxr_Bxr_world_arm, left_arm_is_valid  = safe_mat_update(CONST_LEFT_ARM_POSE, self.tvuer.left_arm_pose)
@@ -262,12 +274,12 @@ class TeleVuerWrapper:
             # The origin of the coordinate for IK Solve is near the WAIST joint motor. You can use teleop/robot_control/robot_arm_ik.py Unit_Test to visualize it.
             # The origin of the coordinate of IPunitree_Brobot_head_arm is HEAD. 
             # So it is necessary to translate the origin of IPunitree_Brobot_head_arm from HEAD to WAIST.
-            left_IPunitree_Brobot_waist_arm = left_IPunitree_Brobot_head_arm.copy()
-            right_IPunitree_Brobot_waist_arm = right_IPunitree_Brobot_head_arm.copy()
-            left_IPunitree_Brobot_waist_arm[0, 3] +=0.15 # x
-            right_IPunitree_Brobot_waist_arm[0,3] +=0.15
-            left_IPunitree_Brobot_waist_arm[2, 3] +=0.45 # z
-            right_IPunitree_Brobot_waist_arm[2,3] +=0.45
+            left_IPunitree_Brobot_wrist_arm = left_IPunitree_Brobot_head_arm.copy()
+            right_IPunitree_Brobot_wrist_arm = right_IPunitree_Brobot_head_arm.copy()
+            left_IPunitree_Brobot_wrist_arm[0, 3] +=0.15 # x
+            right_IPunitree_Brobot_wrist_arm[0,3] +=0.15
+            left_IPunitree_Brobot_wrist_arm[2, 3] +=0.45 # z
+            right_IPunitree_Brobot_wrist_arm[2,3] +=0.45
 
             # -----------------------------------hand position----------------------------------------
             if left_arm_is_valid and right_arm_is_valid:
@@ -325,31 +337,24 @@ class TeleVuerWrapper:
             else:
                 left_Brobot_arm_hand_rot = None
                 right_Brobot_arm_hand_rot = None
-            
-            if self.return_state_data:
-                hand_state = TeleStateData(
-                    left_pinch_state=self.tvuer.left_hand_pinch_state,
-                    left_squeeze_state=self.tvuer.left_hand_squeeze_state,
-                    left_squeeze_value=self.tvuer.left_hand_squeeze_value,
-                    right_pinch_state=self.tvuer.right_hand_pinch_state,
-                    right_squeeze_state=self.tvuer.right_hand_squeeze_state,
-                    right_squeeze_value=self.tvuer.right_hand_squeeze_value,
-                )
-            else:
-                hand_state = None
-
             return TeleData(
                 head_pose=Brobot_world_head,
-                left_arm_pose=left_IPunitree_Brobot_waist_arm,
-                right_arm_pose=right_IPunitree_Brobot_waist_arm,
+                left_wrist_pose=left_IPunitree_Brobot_wrist_arm,
+                right_wrist_pose=right_IPunitree_Brobot_wrist_arm,
                 left_hand_pos=left_IPunitree_Brobot_arm_hand_pos,
                 right_hand_pos=right_IPunitree_Brobot_arm_hand_pos,
                 left_hand_rot=left_Brobot_arm_hand_rot,
                 right_hand_rot=right_Brobot_arm_hand_rot,
-                left_pinch_value=self.tvuer.left_hand_pinch_value * 100.0,
-                right_pinch_value=self.tvuer.right_hand_pinch_value * 100.0,
-                tele_state=hand_state
+                left_hand_pinch=self.tvuer.left_hand_pinch,
+                left_hand_pinchValue=self.tvuer.left_hand_pinchValue,
+                left_hand_squeeze=self.tvuer.left_hand_squeeze,
+                left_hand_squeezeValue=self.tvuer.left_hand_squeezeValue,
+                right_hand_pinch=self.tvuer.right_hand_pinch,
+                right_hand_pinchValue=self.tvuer.right_hand_pinchValue,
+                right_hand_squeeze=self.tvuer.right_hand_squeeze,
+                right_hand_squeezeValue=self.tvuer.right_hand_squeezeValue,
             )
+        # controller tracking
         else:
             # Controller pose data directly follows the (initial pose) Unitree Humanoid Arm URDF Convention (thus no transform is needed).
             left_IPunitree_Bxr_world_arm, left_arm_is_valid  = safe_mat_update(CONST_LEFT_ARM_POSE, self.tvuer.left_arm_pose)
@@ -370,41 +375,38 @@ class TeleVuerWrapper:
             # The origin of the coordinate for IK Solve is near the WAIST joint motor. You can use teleop/robot_control/robot_arm_ik.py Unit_Test to check it.
             # The origin of the coordinate of IPunitree_Brobot_head_arm is HEAD. 
             # So it is necessary to translate the origin of IPunitree_Brobot_head_arm from HEAD to WAIST.
-            left_IPunitree_Brobot_waist_arm = left_IPunitree_Brobot_head_arm.copy()
-            right_IPunitree_Brobot_waist_arm = right_IPunitree_Brobot_head_arm.copy()
-            left_IPunitree_Brobot_waist_arm[0, 3] +=0.15 # x
-            right_IPunitree_Brobot_waist_arm[0,3] +=0.15
-            left_IPunitree_Brobot_waist_arm[2, 3] +=0.45 # z
-            right_IPunitree_Brobot_waist_arm[2,3] +=0.45
+            left_IPunitree_Brobot_wrist_arm = left_IPunitree_Brobot_head_arm.copy()
+            right_IPunitree_Brobot_wrist_arm = right_IPunitree_Brobot_head_arm.copy()
+            left_IPunitree_Brobot_wrist_arm[0, 3] +=0.15 # x
+            right_IPunitree_Brobot_wrist_arm[0,3] +=0.15
+            left_IPunitree_Brobot_wrist_arm[2, 3] +=0.45 # z
+            right_IPunitree_Brobot_wrist_arm[2,3] +=0.45
             # left_IPunitree_Brobot_waist_arm[1, 3] +=0.02 # y
             # right_IPunitree_Brobot_waist_arm[1,3] +=0.02
-
-            # return data
-            if self.return_state_data:
-                controller_state = TeleStateData(
-                    left_trigger_state=self.tvuer.left_controller_trigger_state,
-                    left_squeeze_ctrl_state=self.tvuer.left_controller_squeeze_state,
-                    left_squeeze_ctrl_value=self.tvuer.left_controller_squeeze_value,
-                    left_thumbstick_state=self.tvuer.left_controller_thumbstick_state,
-                    left_thumbstick_value=self.tvuer.left_controller_thumbstick_value,
-                    left_aButton=self.tvuer.left_controller_aButton,
-                    left_bButton=self.tvuer.left_controller_bButton,
-                    right_trigger_state=self.tvuer.right_controller_trigger_state,
-                    right_squeeze_ctrl_state=self.tvuer.right_controller_squeeze_state,
-                    right_squeeze_ctrl_value=self.tvuer.right_controller_squeeze_value,
-                    right_thumbstick_state=self.tvuer.right_controller_thumbstick_state,
-                    right_thumbstick_value=self.tvuer.right_controller_thumbstick_value,
-                    right_aButton=self.tvuer.right_controller_aButton,
-                    right_bButton=self.tvuer.right_controller_bButton,
-                )
-            else:
-                controller_state = None
-
             return TeleData(
                 head_pose=Brobot_world_head,
-                left_arm_pose=left_IPunitree_Brobot_waist_arm,
-                right_arm_pose=right_IPunitree_Brobot_waist_arm,
-                left_trigger_value=10.0 - self.tvuer.left_controller_trigger_value * 10,
-                right_trigger_value=10.0 - self.tvuer.right_controller_trigger_value * 10,
-                tele_state=controller_state
+                left_wrist_pose=left_IPunitree_Brobot_wrist_arm,
+                right_wrist_pose=right_IPunitree_Brobot_wrist_arm,
+                left_ctrl_trigger=self.tvuer.left_ctrl_trigger,
+                left_ctrl_triggerValue=10.0 - self.tvuer.left_ctrl_triggerValue * 10,
+                left_ctrl_squeeze=self.tvuer.left_ctrl_squeeze,
+                left_ctrl_squeezeValue=self.tvuer.left_ctrl_squeezeValue,
+                left_ctrl_aButton=self.tvuer.left_ctrl_aButton,
+                left_ctrl_bButton=self.tvuer.left_ctrl_bButton,
+                left_ctrl_thumbstick=self.tvuer.left_ctrl_thumbstick,
+                left_ctrl_thumbstickValue=self.tvuer.left_ctrl_thumbstickValue,
+                right_ctrl_trigger=self.tvuer.right_ctrl_trigger,
+                right_ctrl_triggerValue=10.0 - self.tvuer.right_ctrl_triggerValue * 10,
+                right_ctrl_squeeze=self.tvuer.right_ctrl_squeeze,
+                right_ctrl_squeezeValue=self.tvuer.right_ctrl_squeezeValue,
+                right_ctrl_aButton=self.tvuer.right_ctrl_aButton,
+                right_ctrl_bButton=self.tvuer.right_ctrl_bButton,
+                right_ctrl_thumbstick=self.tvuer.right_ctrl_thumbstick,
+                right_ctrl_thumbstickValue=self.tvuer.right_ctrl_thumbstickValue,
             )
+        
+    def set_display_image(self, img):
+        self.tvuer.set_display_image(img)
+    
+    def close(self):
+        self.tvuer.close()
