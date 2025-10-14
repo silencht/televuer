@@ -4,6 +4,17 @@ The TeleVuer library is a specialized version of the Vuer library, designed to e
 
 Currently, this module serves as a core component of the [xr_teleoperate](https://github.com/unitreerobotics/xr_teleoperate) library, offering advanced functionality for teleoperation tasks. It supports various XR devices, including Apple Vision Pro, Meta Quest3, Pico 4 Ultra Enterprise etc., ensuring compatibility and ease of use for robotic teleoperation applications.
 
+## Release Note
+
+V2.0 brings updates:
+
+1. Image transport is now by reference instead of external shared memory.
+2. Renamed the get-data function from `get_motion_state_data` to `get_tele_data`.
+3. Fixed naming errors (`waist` → `wrist`)
+4. Var name align with **vuer** conventions.
+5. Streamlined the data structure: removed the nested `TeleStateData` and return everything in the unified `TeleData`.
+6. Added new image-transport interfaces such as `set_display_image`.
+
 ## Install
 
 ```bash
@@ -83,12 +94,16 @@ python _test_tv_wrapper.py
 - **Functionality**:
   - Stable functionality with good compatibility.
   - Most known issues have been resolved.
+  - A minor issue: the right eye briefly goes black right after startup.
 - **References**:
   - [GitHub Issue #53](https://github.com/unitreerobotics/xr_teleoperate/issues/53)
   - [GitHub Issue #45](https://github.com/vuer-ai/vuer/issues/45)
   - [GitHub Issue #65](https://github.com/vuer-ai/vuer/issues/65)
 
 ---
+
+## Tested Devices
+please refer to our wiki doc [XR Device](https://github.com/unitreerobotics/xr_teleoperate/wiki/XR_Device)
 
 ## Notes
 - **Recommended Version**: Use `vuer==0.0.60` for the best functionality and stability.
