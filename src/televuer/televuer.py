@@ -106,7 +106,12 @@ class TeleVuer:
         self.process.start()
     
     def _vuer_run(self):
-        self.vuer.run()
+        try:
+            self.vuer.run()
+        except KeyboardInterrupt:
+            pass
+        except Exception as e:
+            print(f"Vuer encountered an error: {e}")
 
     def _img2display_writer(self):
         while True:
