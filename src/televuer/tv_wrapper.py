@@ -194,7 +194,7 @@ class TeleData:
 
 class TeleVuerWrapper:
     def __init__(self, binocular: bool, use_hand_tracking: bool, img_shape, return_hand_rot_data: bool = False,
-                       cert_file = None, key_file = None, ngrok = False, webrtc = False):
+                       cert_file = None, key_file = None, ngrok = False, use_image = True, webrtc = False):
         """
         TeleVuerWrapper is a wrapper for the TeleVuer class, which handles XR device's data suit for robot control.
         It initializes the TeleVuer instance with the specified parameters and provides a method to get motion state data.
@@ -206,12 +206,14 @@ class TeleVuerWrapper:
         :param cert_file: The path to the certificate file for secure connection.
         :param key_file: The path to the key file for secure connection.
         :param ngrok: A boolean indicating whether to use ngrok for remote access.
-        :param webrtc: A boolean indicating whether to use WebRTC for real-time communication.
+        :param use_image: A boolean indicating whether to use image streaming: ImageBackground or WebRTCVideoPlane.
+                          if False, no image stream is used.
+        :param webrtc: A boolean indicating whether to use WebRTC for real-time communication. if False, use ImageBackground.
         """
         self.use_hand_tracking = use_hand_tracking
         self.return_hand_rot_data = return_hand_rot_data
         self.tvuer = TeleVuer(binocular, use_hand_tracking, img_shape, cert_file=cert_file, key_file=key_file,
-                              ngrok=ngrok, webrtc=webrtc)
+                              ngrok=ngrok, use_image=use_image, webrtc=webrtc)
     
     def get_tele_data(self):
         """

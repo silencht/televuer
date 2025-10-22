@@ -10,7 +10,8 @@ from pathlib import Path
 
 
 class TeleVuer:
-    def __init__(self, binocular: bool, use_hand_tracking: bool, img_shape, cert_file=None, key_file=None, ngrok=False, webrtc=False):
+    def __init__(self, binocular: bool, use_hand_tracking: bool, img_shape, cert_file=None, key_file=None, ngrok=False, 
+                use_image = True, webrtc=False):
         """
         TeleVuer class for OpenXR-based XR teleoperate applications.
         This class handles the communication with the Vuer server and manages the shared memory for image and pose data.
@@ -21,7 +22,9 @@ class TeleVuer:
         :param cert_file: str, path to the SSL certificate file.
         :param key_file: str, path to the SSL key file.
         :param ngrok: bool, whether to use ngrok for tunneling.
-        :param webrtc: bool, whether to use WebRTC for real-time communication.
+        :param use_image: bool, whether to use image streaming: ImageBackground or WebRTCVideoPlane.
+                          if False, no image stream is used.
+        :param webrtc: bool, whether to use WebRTC for real-time communication. if False, use ImageBackground.
         """
         self.binocular = binocular
         self.use_hand_tracking = use_hand_tracking
@@ -56,13 +59,17 @@ class TeleVuer:
             self.vuer.add_handler("HAND_MOVE")(self.on_hand_move)
         else:
             self.vuer.add_handler("CONTROLLER_MOVE")(self.on_controller_move)
+        self.use_image = use_image
         self.webrtc = webrtc
-        if self.binocular and not self.webrtc:
-            self.vuer.spawn(start=False)(self.main_image_binocular)
-        elif not self.binocular and not self.webrtc:
-            self.vuer.spawn(start=False)(self.main_image_monocular)
-        elif self.webrtc:
-            self.vuer.spawn(start=False)(self.main_image_webrtc)
+        if self.use_image:
+            if self.binocular and not self.webrtc:
+                self.vuer.spawn(start=False)(self.main_image_binocular)
+            elif not self.binocular and not self.webrtc:
+                self.vuer.spawn(start=False)(self.main_image_monocular)
+            elif self.binocular and self.webrtc:
+                self.vuer.spawn(start=False)(self.main_image_binocular_webrtc)
+            elif not self.binocular and self.webrtc:
+                self.vuer.spawn(start=False)(self.main_image_monocular_webrtc)
 
         self.head_pose_shared = Array('d', 16, lock=True)
         self.left_arm_pose_shared = Array('d', 16, lock=True)
@@ -322,7 +329,7 @@ class TeleVuer:
             )
             await asyncio.sleep(0.016)
 
-    async def main_image_webrtc(self, session, fps=60):
+    async def main_image_binocular_webrtc(self, session):
         aspect_ratio = self.img_width / self.img_height
         if self.use_hand_tracking:
             session.upsert(
@@ -343,20 +350,54 @@ class TeleVuer:
                     showRight=False,
                 )
             )
-    
-        session.upsert(
-            WebRTCVideoPlane(
-            # WebRTCStereoVideoPlane(
-                src="https://10.0.7.49:8080/offer",
-                iceServer={},
-                key="webrtc",
-                aspect=aspect_ratio,
-                height = 7,
-            ),
-            to="bgChildren",
-        )
         while True:
-            await asyncio.sleep(1)
+            session.upsert(
+                WebRTCStereoVideoPlane(
+                    src="https://127.0.0.1:60001/offer",
+                    iceServers=[],
+                    key="video-quad",
+                    aspect=aspect_ratio,
+                    height = 7,
+                ),
+                to="bgChildren",
+            )
+
+            await asyncio.sleep(0.016)
+
+    async def main_image_monocular_webrtc(self, session, fps=60):
+        aspect_ratio = self.img_width / self.img_height
+        if self.use_hand_tracking:
+            session.upsert(
+                Hands(
+                    stream=True,
+                    key="hands",
+                    showLeft=False,
+                    showRight=False
+                ),
+                to="bgChildren",
+            )
+        else:
+            session.upsert(
+                MotionControllers(
+                    stream=True, 
+                    key="motionControllers",
+                    showLeft=False,
+                    showRight=False,
+                )
+            )
+        while True:
+            session.upsert(
+                WebRTCVideoPlane(
+                    src="https://127.0.0.1:60001/offer",
+                    iceServers=[],
+                    key="video-quad",
+                    aspect=aspect_ratio,
+                    height = 7,
+                ),
+                to="bgChildren",
+            )
+
+            await asyncio.sleep(0.016)
     # ==================== common data ====================
     @property
     def head_pose(self):

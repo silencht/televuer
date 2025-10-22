@@ -25,7 +25,10 @@ def run_test_tv_wrapper():
 
     # xr-mode
     use_hand_track=False
-    tv_wrapper = TeleVuerWrapper(binocular=head_binocular, use_hand_tracking=use_hand_track, img_shape=head_img_shape, return_hand_rot_data = True)
+    use_image=True
+    webrtc=True
+    tv_wrapper = TeleVuerWrapper(binocular=head_binocular, use_hand_tracking=use_hand_track, img_shape=head_img_shape, return_hand_rot_data = True,
+                                 use_image=use_image, webrtc=webrtc)
     try:
         input("Press Enter to start tv_wrapper test...")
         running = True
@@ -70,7 +73,7 @@ def run_test_tv_wrapper():
 
             current_time = time.time()
             time_elapsed = current_time - start_time
-            sleep_time = max(0, 0.3 - time_elapsed)
+            sleep_time = max(0, 0.16 - time_elapsed)
             time.sleep(sleep_time)
             logger_mp.debug(f"main process sleep: {sleep_time}")
 

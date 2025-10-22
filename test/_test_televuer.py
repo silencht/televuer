@@ -24,7 +24,10 @@ def run_test_TeleVuer():
 
     # xr-mode
     use_hand_track = True
-    tv = TeleVuer(binocular = head_binocular, use_hand_tracking = use_hand_track, img_shape = head_img_shape, webrtc=False)
+    use_image = True
+    webrtc = True
+    tv = TeleVuer(binocular = head_binocular, use_hand_tracking = use_hand_track, img_shape = head_img_shape, 
+                  use_image=use_image, webrtc=webrtc)
 
     try:
         input("Press Enter to start TeleVuer test...")
