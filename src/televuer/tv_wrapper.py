@@ -193,27 +193,33 @@ class TeleData:
 
 
 class TeleVuerWrapper:
-    def __init__(self, binocular: bool, use_hand_tracking: bool, img_shape, return_hand_rot_data: bool = False,
-                       cert_file = None, key_file = None, ngrok = False, use_image = True, webrtc = False):
+    def __init__(self, use_hand_tracking: bool, pass_through: bool=False, binocular: bool=True, img_shape: tuple=(480, 640), 
+                       cert_file = None, key_file = None, webrtc: bool=True, webrtc_url: str=None, 
+                       return_hand_rot_data: bool=False):
         """
         TeleVuerWrapper is a wrapper for the TeleVuer class, which handles XR device's data suit for robot control.
         It initializes the TeleVuer instance with the specified parameters and provides a method to get motion state data.
 
-        :param binocular: A boolean indicating whether the head camera device is binocular or not.
-        :param use_hand_tracking: A boolean indicating whether to use hand tracking or use controller tracking.
-        :param img_shape: The shape of the image to be processed.
-        :param return_hand_rot_data: A boolean indicating whether to return the hand rotation data.
-        :param cert_file: The path to the certificate file for secure connection.
-        :param key_file: The path to the key file for secure connection.
-        :param ngrok: A boolean indicating whether to use ngrok for remote access.
-        :param use_image: A boolean indicating whether to use image streaming: ImageBackground or WebRTCVideoPlane.
-                          if False, no image stream is used.
-        :param webrtc: A boolean indicating whether to use WebRTC for real-time communication. if False, use ImageBackground.
+        :param use_hand_tracking: bool, whether to use hand tracking or controller tracking.
+        :param pass_through: bool, controls the VR viewing mode.
+
+            Note:
+            - if pass_through is True, the XR user will see the real world through the VR headset cameras.
+            - if pass_through is False, the XR user will see the images provided by webrtc or render_to_xr method:
+            - webrtc is prior to render_to_xr. if webrtc is True, the class will use webrtc for image transmission.
+            - if webrtc is False, the class will use render_to_xr for image transmission.
+    
+        :param binocular: bool, whether the application is binocular (stereoscopic) or monocular.
+        :param img_shape: tuple, shape of the head image (height, width).
+        :param cert_file: str, path to the SSL certificate file.
+        :param key_file: str, path to the SSL key file.
+        :param webrtc: bool, whether to use WebRTC for real-time communication. if False, use ImageBackground.
+        :param webrtc_url: str, URL for the WebRTC offer.
         """
         self.use_hand_tracking = use_hand_tracking
         self.return_hand_rot_data = return_hand_rot_data
-        self.tvuer = TeleVuer(binocular, use_hand_tracking, img_shape, cert_file=cert_file, key_file=key_file,
-                              ngrok=ngrok, use_image=use_image, webrtc=webrtc)
+        self.tvuer = TeleVuer(use_hand_tracking, pass_through, binocular, img_shape, cert_file=cert_file, key_file=key_file,
+                              webrtc=webrtc, webrtc_url=webrtc_url)
     
     def get_tele_data(self):
         """
@@ -407,8 +413,8 @@ class TeleVuerWrapper:
                 right_ctrl_thumbstickValue=self.tvuer.right_ctrl_thumbstickValue,
             )
         
-    def set_display_image(self, img):
-        self.tvuer.set_display_image(img)
+    def render_to_xr(self, img):
+        self.tvuer.render_to_xr(img)
     
     def close(self):
         self.tvuer.close()

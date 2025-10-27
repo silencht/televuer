@@ -10,66 +10,74 @@ from pathlib import Path
 
 
 class TeleVuer:
-    def __init__(self, binocular: bool, use_hand_tracking: bool, img_shape, cert_file=None, key_file=None, ngrok=False, 
-                use_image = True, webrtc=False):
+    def __init__(self, use_hand_tracking: bool, pass_through:bool=False, binocular: bool=True, img_shape: tuple=None, 
+                       cert_file=None, key_file=None, webrtc: bool=False, webrtc_url: str=None):
         """
         TeleVuer class for OpenXR-based XR teleoperate applications.
-        This class handles the communication with the Vuer server and manages the shared memory for image and pose data.
+        This class handles the communication with the Vuer server and manages image and pose data.
 
-        :param binocular: bool, whether the application is binocular (stereoscopic) or monocular.
         :param use_hand_tracking: bool, whether to use hand tracking or controller tracking.
-        :param img_shape: tuple, shape of the image (height, width).
+        :param pass_through: bool, controls the VR viewing mode.
+
+            Note:
+            - if pass_through is True, the XR user will see the real world through the VR headset cameras.
+            - if pass_through is False, the XR user will see the images provided by webrtc or render_to_xr method:
+            - webrtc is prior to render_to_xr. if webrtc is True, the class will use webrtc for image transmission.
+            - if webrtc is False, the class will use render_to_xr for image transmission.
+    
+        :param binocular: bool, whether the application is binocular (stereoscopic) or monocular.
+        :param img_shape: tuple, shape of the head image (height, width).
         :param cert_file: str, path to the SSL certificate file.
         :param key_file: str, path to the SSL key file.
-        :param ngrok: bool, whether to use ngrok for tunneling.
-        :param use_image: bool, whether to use image streaming: ImageBackground or WebRTCVideoPlane.
-                          if False, no image stream is used.
         :param webrtc: bool, whether to use WebRTC for real-time communication. if False, use ImageBackground.
+        :param webrtc_url: str, URL for the WebRTC offer.
         """
-        self.binocular = binocular
         self.use_hand_tracking = use_hand_tracking
+        self.pass_through = pass_through
+
+        self.binocular = binocular
         self.img_shape = (img_shape[0], img_shape[1], 3)
-        self.img2display_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.img_shape) * np.uint8().itemsize)
-        self.img2display = np.ndarray(self.img_shape, dtype=np.uint8, buffer=self.img2display_shm.buf)
-
-        self.latest_frame = None
-        self.new_frame_event = threading.Event()
-        self.writer_thread = threading.Thread(target=self._img2display_writer, daemon=True)
-        self.writer_thread.start()
-
         self.img_height = self.img_shape[0]
         if self.binocular:
             self.img_width  = self.img_shape[1] // 2
         else:
             self.img_width  = self.img_shape[1]
-        
+        self.aspect_ratio = self.img_width / self.img_height
+
         current_module_dir = Path(__file__).resolve().parent.parent.parent
         if cert_file is None:
             cert_file = os.path.join(current_module_dir, "cert.pem")
         if key_file is None:
             key_file = os.path.join(current_module_dir, "key.pem")
 
-        if ngrok:
-            self.vuer = Vuer(host='0.0.0.0', queries=dict(grid=False), queue_len=3)
-        else:
-            self.vuer = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
-
+        self.vuer = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
         self.vuer.add_handler("CAMERA_MOVE")(self.on_cam_move)
         if self.use_hand_tracking:
             self.vuer.add_handler("HAND_MOVE")(self.on_hand_move)
         else:
             self.vuer.add_handler("CONTROLLER_MOVE")(self.on_controller_move)
-        self.use_image = use_image
+
         self.webrtc = webrtc
-        if self.use_image:
-            if self.binocular and not self.webrtc:
-                self.vuer.spawn(start=False)(self.main_image_binocular)
-            elif not self.binocular and not self.webrtc:
-                self.vuer.spawn(start=False)(self.main_image_monocular)
-            elif self.binocular and self.webrtc:
+        self.webrtc_url = webrtc_url
+
+        if self.webrtc:
+            if self.binocular:
                 self.vuer.spawn(start=False)(self.main_image_binocular_webrtc)
-            elif not self.binocular and self.webrtc:
+            else:
                 self.vuer.spawn(start=False)(self.main_image_monocular_webrtc)
+        else:
+            if self.pass_through is False:
+                self.img2display_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.img_shape) * np.uint8().itemsize)
+                self.img2display = np.ndarray(self.img_shape, dtype=np.uint8, buffer=self.img2display_shm.buf)
+                self.latest_frame = None
+                self.new_frame_event = threading.Event()
+                self.stop_writer_event = threading.Event()
+                self.writer_thread = threading.Thread(target=self._xr_render_loop, daemon=True)
+                self.writer_thread.start()
+            if self.binocular:
+                 self.vuer.spawn(start=False)(self.main_image_binocular)
+            else:
+                 self.vuer.spawn(start=False)(self.main_image_monocular)
 
         self.head_pose_shared = Array('d', 16, lock=True)
         self.left_arm_pose_shared = Array('d', 16, lock=True)
@@ -119,25 +127,40 @@ class TeleVuer:
             pass
         except Exception as e:
             print(f"Vuer encountered an error: {e}")
+        finally:
+            if hasattr(self, "stop_writer_event"):
+                self.stop_writer_event.set()
 
-    def _img2display_writer(self):
-        while True:
-            self.new_frame_event.wait()
+    def _xr_render_loop(self):
+        while not self.stop_writer_event.is_set():
+            if not self.new_frame_event.wait(timeout=0.1):
+                continue
             self.new_frame_event.clear()
-            self.latest_frame = cv2.cvtColor(self.latest_frame, cv2.COLOR_BGR2RGB)
-            self.img2display[:] = self.latest_frame #.copy()
+            if self.latest_frame is None:
+                continue
+            latest_frame = self.latest_frame
+            latest_frame = cv2.cvtColor(latest_frame, cv2.COLOR_BGR2RGB)
+            self.img2display[:] = latest_frame
     
-    def set_display_image(self, image):
+    def render_to_xr(self, image):
+        if self.webrtc or self.pass_through:
+            print("[TeleVuer] Warning: render_to_xr is ignored when webrtc is enabled or pass_through is True.")
+            return
         self.latest_frame = image
         self.new_frame_event.set()
 
-    
     def close(self):
         self.process.terminate()
         self.process.join(timeout=0.5)
-        self.img2display_shm.close()
-        self.img2display_shm.unlink()
-        self.writer_thread.join(timeout=0.5)
+        if not self.webrtc and not self.pass_through:
+            self.stop_writer_event.set()
+            self.new_frame_event.set()
+            self.writer_thread.join(timeout=0.5)
+            try:
+                self.img2display_shm.close()
+                self.img2display_shm.unlink()
+            except:
+                pass
 
     async def on_cam_move(self, event, session, fps=60):
         try:
@@ -232,7 +255,7 @@ class TeleVuer:
         except:
             pass
     
-    async def main_image_binocular(self, session, fps=60):
+    async def main_image_binocular(self, session):
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -254,41 +277,41 @@ class TeleVuer:
                 to="bgChildren",
             )
         while True:
-            aspect_ratio = self.img_width / self.img_height
-            session.upsert(
-                [
-                    ImageBackground(
-                        self.img2display[:, :self.img_width],
-                        aspect=aspect_ratio,
-                        height=1,
-                        distanceToCamera=1,
-                        # The underlying rendering engine supported a layer binary bitmask for both objects and the camera. 
-                        # Below we set the two image planes, left and right, to layers=1 and layers=2. 
-                        # Note that these two masks are associated with left eye’s camera and the right eye’s camera.
-                        layers=1,
-                        format="jpeg",
-                        quality=80,
-                        key="background-left",
-                        interpolate=True,
-                    ),
-                    ImageBackground(
-                        self.img2display[:, self.img_width:],
-                        aspect=aspect_ratio,
-                        height=1,
-                        distanceToCamera=1,
-                        layers=2,
-                        format="jpeg",
-                        quality=80,
-                        key="background-right",
-                        interpolate=True,
-                    ),
-                ],
-                to="bgChildren",
-            )
+            if self.pass_through is False:
+                session.upsert(
+                    [
+                        ImageBackground(
+                            self.img2display[:, :self.img_width],
+                            aspect=self.aspect_ratio,
+                            height=1,
+                            distanceToCamera=1,
+                            # The underlying rendering engine supported a layer binary bitmask for both objects and the camera. 
+                            # Below we set the two image planes, left and right, to layers=1 and layers=2. 
+                            # Note that these two masks are associated with left eye’s camera and the right eye’s camera.
+                            layers=1,
+                            format="jpeg",
+                            quality=80,
+                            key="background-left",
+                            interpolate=True,
+                        ),
+                        ImageBackground(
+                            self.img2display[:, self.img_width:],
+                            aspect=self.aspect_ratio,
+                            height=1,
+                            distanceToCamera=1,
+                            layers=2,
+                            format="jpeg",
+                            quality=80,
+                            key="background-right",
+                            interpolate=True,
+                        ),
+                    ],
+                    to="bgChildren",
+                )
             # 'jpeg' encoding should give you about 30fps with a 16ms wait in-between.
             await asyncio.sleep(0.016)
 
-    async def main_image_monocular(self, session, fps=60):
+    async def main_image_monocular(self, session):
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -311,26 +334,25 @@ class TeleVuer:
             )
 
         while True:
-            aspect_ratio = self.img_width / self.img_height
-            session.upsert(
-                [
-                    ImageBackground(
-                        self.img2display,
-                        aspect=aspect_ratio,
-                        height=1,
-                        distanceToCamera=1,
-                        format="jpeg",
-                        quality=80,
-                        key="background-mono",
-                        interpolate=True,
-                    ),
-                ],
-                to="bgChildren",
-            )
+            if self.pass_through is False:
+                session.upsert(
+                    [
+                        ImageBackground(
+                            self.img2display,
+                            aspect=self.aspect_ratio,
+                            height=1,
+                            distanceToCamera=1,
+                            format="jpeg",
+                            quality=80,
+                            key="background-mono",
+                            interpolate=True,
+                        ),
+                    ],
+                    to="bgChildren",
+                )
             await asyncio.sleep(0.016)
 
     async def main_image_binocular_webrtc(self, session):
-        aspect_ratio = self.img_width / self.img_height
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -350,22 +372,23 @@ class TeleVuer:
                     showRight=False,
                 )
             )
+
         while True:
-            session.upsert(
-                WebRTCStereoVideoPlane(
-                    src="https://127.0.0.1:60001/offer",
-                    iceServers=[],
-                    key="video-quad",
-                    aspect=aspect_ratio,
-                    height = 7,
-                ),
-                to="bgChildren",
-            )
+            if self.pass_through is False:
+                session.upsert(
+                    WebRTCStereoVideoPlane(
+                        src=self.webrtc_url,
+                        iceServers=[],
+                        key="video-quad",
+                        aspect=self.aspect_ratio,
+                        height = 7,
+                    ),
+                    to="bgChildren",
+                )
 
             await asyncio.sleep(0.016)
 
-    async def main_image_monocular_webrtc(self, session, fps=60):
-        aspect_ratio = self.img_width / self.img_height
+    async def main_image_monocular_webrtc(self, session):
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -385,17 +408,19 @@ class TeleVuer:
                     showRight=False,
                 )
             )
+
         while True:
-            session.upsert(
-                WebRTCVideoPlane(
-                    src="https://127.0.0.1:60001/offer",
-                    iceServers=[],
-                    key="video-quad",
-                    aspect=aspect_ratio,
-                    height = 7,
-                ),
-                to="bgChildren",
-            )
+            if self.pass_through is False:
+                session.upsert(
+                    WebRTCVideoPlane(
+                        src=self.webrtc_url,
+                        iceServers=[],
+                        key="video-quad",
+                        aspect=self.aspect_ratio,
+                        height = 7,
+                    ),
+                    to="bgChildren",
+                )
 
             await asyncio.sleep(0.016)
     # ==================== common data ====================
