@@ -5,6 +5,10 @@ The TeleVuer library is a specialized version of the Vuer library, designed to e
 Currently, this module serves as a core component of the [xr_teleoperate](https://github.com/unitreerobotics/xr_teleoperate) library, offering advanced functionality for teleoperation tasks. It supports various XR devices, including Apple Vision Pro, Meta Quest3, Pico 4 Ultra Enterprise etc., ensuring compatibility and ease of use for robotic teleoperation applications.
 
 ## Release Note
+V3.0 brings updates:
+1. Added `pass_through` interface to enable/disable the pass-through mode.
+2. Support `webrtc` interface to enable/disable the webrtc streaming mode.
+3. Use `render_to_xr` method (adjust from `set_display_image`) to send images to XR device.
 
 V2.0 brings updates:
 
@@ -14,6 +18,14 @@ V2.0 brings updates:
 4. Var name align with **vuer** conventions.
 5. Streamlined the data structure: removed the nested `TeleStateData` and return everything in the unified `TeleData`.
 6. Added new image-transport interfaces such as `set_display_image`.
+
+## Diagram
+
+<p align="center">
+  <a href="https://oss-global-cdn.unitree.com/static/5ae3c9ee9a3d40dc9fe002281e8aeac1_2975x3000.png">
+    <img src="https://oss-global-cdn.unitree.com/static/5ae3c9ee9a3d40dc9fe002281e8aeac1_2975x3000.png" alt="Diagram" style="width: 50%;">
+  </a>
+</p>
 
 ## Install
 
@@ -33,7 +45,7 @@ python _test_tv_wrapper.py
 # First, use Apple Vision Pro or Pico 4 Ultra Enterprise to connect to the same Wi-Fi network as your computer.
 # Next, open safari / pico browser, enter https://host machine's ip:8012/?ws=wss://host machine's ip:8012
 # for example, https://192.168.123.2:8012?ws=wss://192.168.123.2:8012
-# Use the appropriate method (hand gesture or controller) to click the "Virtual Reality" button in the bottom-left corner of the screen.
+# Use the appropriate method (hand gesture or controller) to click the "pass-through" button in the bottom-left corner of the screen.
 
 # Press Enter in the terminal to launch the program.
 ```

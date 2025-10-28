@@ -6,38 +6,19 @@ if project_root not in sys.path:
 
 import time
 from televuer import TeleVuer
-# image client. if you want to test with real image stream,
-# please copy image_client.py and messaging.py from xr_teleoperate/teleop/image_server to the current directory before running this test script
-# from image_client import ImageClient
 import logging_mp
 logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
 
 def run_test_TeleVuer():
-    head_binocular = True
-    head_img_shape = (480, 1280, 3)  # default image
-
-    # img_client = ImageClient(host="127.0.0.1") # 127.0.0.1 is localhost, 192.168.123.164 is unitree robot's host ip
-    # if not img_client.has_head_cam():
-    #     logger_mp.error("Head camera is required. Please enable head camera on the image server side.")
-    # head_img_shape = img_client.get_head_shape()
-    # head_binocular = img_client.is_binocular()
-
     # xr-mode
     use_hand_track = True
-    use_image = True
-    webrtc = True
-    tv = TeleVuer(binocular = head_binocular, use_hand_tracking = use_hand_track, img_shape = head_img_shape, 
-                  use_image=use_image, webrtc=webrtc)
+    tv = TeleVuer(use_hand_tracking = use_hand_track, pass_through=True)
 
     try:
         input("Press Enter to start TeleVuer test...")
         running = True
         while running:
             start_time = time.time()
-            # image client
-            # head_img, head_img_fps = img_client.get_head_frame()
-            # tv.set_display_image(head_img)
-            
             logger_mp.info("=" * 80)
             logger_mp.info("Common Data (always available):")
             logger_mp.info(f"head_pose shape: {tv.head_pose.shape}\n{tv.head_pose}\n")
@@ -89,7 +70,6 @@ def run_test_TeleVuer():
         logger_mp.warning("KeyboardInterrupt, exiting program...")
     finally:
         tv.close()
-        # img_client.close()
         logger_mp.warning("Finally, exiting program...")
         exit(0)
 

@@ -6,39 +6,28 @@ if project_root not in sys.path:
 
 import time
 from televuer import TeleVuerWrapper
-# image client. if you want to test with real image stream,
-# please copy image_client.py and messaging.py from xr_teleoperate/teleop/image_server to the current directory before running this test script
-# from image_client import ImageClient
 import logging_mp
 logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
 
 
 def run_test_tv_wrapper():
-    head_binocular = True
-    head_img_shape = (480, 1280, 3)  # default image shape
-
-    # img_client = ImageClient(host="127.0.0.1") # 127.0.0.1 is localhost, 192.168.123.164 is unitree robot's host ip
-    # if not img_client.has_head_cam():
-    #     logger_mp.error("Head camera is required. Please enable head camera on the image server side.")
-    # head_img_shape = img_client.get_head_shape()
-    # head_binocular = img_client.is_binocular()
-
     # xr-mode
     use_hand_track=False
-    use_image=True
-    webrtc=True
-    tv_wrapper = TeleVuerWrapper(binocular=head_binocular, use_hand_tracking=use_hand_track, img_shape=head_img_shape, return_hand_rot_data = True,
-                                 use_image=use_image, webrtc=webrtc)
+    tv_wrapper = TeleVuerWrapper(use_hand_tracking=use_hand_track, pass_through=True, return_hand_rot_data=False,
+                                #  binocular=False, img_shape=(480, 1280, 3),
+                                #  webrtc=False, webrtc_url="https://127.0.0.1:60001/offer"
+                                )
     try:
         input("Press Enter to start tv_wrapper test...")
         running = True
         while running:
             start_time = time.time()
-            # image client
-            # head_img, head_img_fps = img_client.get_head_frame()
-            # tv_wrapper.set_display_image(head_img)
             logger_mp.info("---- TV Wrapper TeleData ----")
             teleData = tv_wrapper.get_tele_data()
+
+            # import cv2
+            # img = cv2.videoCapture(0).read()[1]
+            # tv_wrapper.render_to_xr(img)
 
             logger_mp.info("-------------------=== TeleData Snapshot ===-------------------")
             logger_mp.info(f"[Head Pose]:\n{teleData.head_pose}")
@@ -82,7 +71,6 @@ def run_test_tv_wrapper():
         logger_mp.warning("KeyboardInterrupt, exiting program...")
     finally:
         tv_wrapper.close()
-        # img_client.close()
         logger_mp.warning("Finally, exiting program...")
         exit(0)
 
