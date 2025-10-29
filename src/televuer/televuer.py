@@ -378,10 +378,12 @@ class TeleVuer:
                 session.upsert(
                     WebRTCStereoVideoPlane(
                         src=self.webrtc_url,
-                        iceServers=[],
+                        iceServer=None,
+                        iceServers=[], 
                         key="video-quad",
                         aspect=self.aspect_ratio,
                         height = 7,
+                        layout="stereo-left-right"
                     ),
                     to="bgChildren",
                 )
@@ -414,6 +416,7 @@ class TeleVuer:
                 session.upsert(
                     WebRTCVideoPlane(
                         src=self.webrtc_url,
+                        iceServer=None,
                         iceServers=[],
                         key="video-quad",
                         aspect=self.aspect_ratio,
