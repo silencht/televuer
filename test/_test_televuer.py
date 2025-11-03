@@ -11,8 +11,8 @@ logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
 
 def run_test_TeleVuer():
     # xr-mode
-    use_hand_track = True
-    tv = TeleVuer(use_hand_tracking = use_hand_track, pass_through=True)
+    use_hand_track = False
+    tv = TeleVuer(use_hand_tracking = use_hand_track, pass_through=True, binocular=True, img_shape=(480, 1280))
 
     try:
         input("Press Enter to start TeleVuer test...")

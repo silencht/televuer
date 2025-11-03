@@ -13,8 +13,8 @@ logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
 def run_test_tv_wrapper():
     # xr-mode
     use_hand_track=False
-    tv_wrapper = TeleVuerWrapper(use_hand_tracking=use_hand_track, pass_through=True, return_hand_rot_data=False,
-                                #  binocular=False, img_shape=(480, 1280, 3),
+    tv_wrapper = TeleVuerWrapper(use_hand_tracking=use_hand_track, pass_through=True,
+                                #  binocular=False, img_shape=(480, 1280),
                                 #  webrtc=False, webrtc_url="https://127.0.0.1:60001/offer"
                                 )
     try:
