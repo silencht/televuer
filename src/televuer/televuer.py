@@ -358,8 +358,8 @@ class TeleVuer:
                 Hands(
                     stream=True,
                     key="hands",
-                    showLeft=False,
-                    showRight=False
+                    hideLeft=True,
+                    hideRight=True
                 ),
                 to="bgChildren",
             )
@@ -368,9 +368,10 @@ class TeleVuer:
                 MotionControllers(
                     stream=True, 
                     key="motionControllers",
-                    showLeft=False,
-                    showRight=False,
-                )
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
             )
 
         while True:
@@ -396,8 +397,8 @@ class TeleVuer:
                 Hands(
                     stream=True,
                     key="hands",
-                    showLeft=False,
-                    showRight=False
+                    hideLeft=True,
+                    hideRight=True
                 ),
                 to="bgChildren",
             )
@@ -406,9 +407,10 @@ class TeleVuer:
                 MotionControllers(
                     stream=True, 
                     key="motionControllers",
-                    showLeft=False,
-                    showRight=False,
-                )
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
             )
 
         while True:
