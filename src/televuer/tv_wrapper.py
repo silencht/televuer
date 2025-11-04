@@ -354,11 +354,11 @@ class TeleVuerWrapper:
                 left_hand_rot=left_Brobot_arm_hand_rot,
                 right_hand_rot=right_Brobot_arm_hand_rot,
                 left_hand_pinch=self.tvuer.left_hand_pinch,
-                left_hand_pinchValue=self.tvuer.left_hand_pinchValue,
+                left_hand_pinchValue=self.tvuer.left_hand_pinchValue * 100.0,
                 left_hand_squeeze=self.tvuer.left_hand_squeeze,
                 left_hand_squeezeValue=self.tvuer.left_hand_squeezeValue,
                 right_hand_pinch=self.tvuer.right_hand_pinch,
-                right_hand_pinchValue=self.tvuer.right_hand_pinchValue,
+                right_hand_pinchValue=self.tvuer.right_hand_pinchValue * 100.0,
                 right_hand_squeeze=self.tvuer.right_hand_squeeze,
                 right_hand_squeezeValue=self.tvuer.right_hand_squeezeValue,
             )
