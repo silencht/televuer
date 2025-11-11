@@ -11,7 +11,7 @@ from pathlib import Path
 
 class TeleVuer:
     def __init__(self, use_hand_tracking: bool, pass_through:bool=False, binocular: bool=True, img_shape: tuple=None, 
-                       cert_file=None, key_file=None, webrtc: bool=False, webrtc_url: str=None, display_fps: float=60.0):
+                       cert_file=None, key_file=None, webrtc: bool=False, webrtc_url: str=None, display_fps: float=30.0):
         """
         TeleVuer class for OpenXR-based XR teleoperate applications.
         This class handles the communication with the Vuer server and manages image and pose data.
@@ -31,7 +31,7 @@ class TeleVuer:
         :param key_file: str, path to the SSL key file.
         :param webrtc: bool, whether to use WebRTC for real-time communication. if False, use ImageBackground.
         :param webrtc_url: str, URL for the WebRTC offer.
-        :param display_fps: float, target frames per second for display updates (default: 60.0).
+        :param display_fps: float, target frames per second for display updates (default: 30.0).
         """
         self.use_hand_tracking = use_hand_tracking
         self.display_fps = display_fps
