@@ -104,20 +104,20 @@ You can tell televuer where to find the certificate files using either environme
 
 This configuaration could be shared with [teleimager](https://github.com/silencht/teleimager) module in [xr_teleoperate](https://github.com/unitreerobotics/xr_teleoperate) repo.
 
-1. Environment Variable Configuration (Optional)
+1. User Configuration Directory (Recommended)
+
+```bash
+# this repo belongs to xr_teleoperate, so we use its config dir
+mkdir -p ~/.config/xr_teleoperate/
+cp cert.pem key.pem ~/.config/xr_teleoperate/
+```
+2. Environment Variable Configuration (Optional)
 
 ```bash
 # This makes the configuration persistent for future terminal sessions.
 echo 'export XR_TELEOP_CERT="your_file_path/cert.pem"' >> ~/.bashrc
 echo 'export XR_TELEOP_KEY="your_file_path/key.pem"' >> ~/.bashrc
 source ~/.bashrc
-```
-2. User Configuration Directory (Optional)
-
-```bash
-# this repo belongs to xr_teleoperate, so we use its config dir
-mkdir -p ~/.config/xr_teleoperate/
-cp cert.pem key.pem ~/.config/xr_teleoperate/
 ```
 
 3. Default Behavior
