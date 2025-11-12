@@ -11,7 +11,7 @@ from pathlib import Path
 
 class TeleVuer:
     def __init__(self, use_hand_tracking: bool, pass_through:bool=False, binocular: bool=True, img_shape: tuple=None, 
-                       cert_file=None, key_file=None, webrtc: bool=False, webrtc_url: str=None, display_fps: float=30.0):
+                       cert_file: str=None, key_file: str=None, webrtc: bool=False, webrtc_url: str=None, display_fps: float=30.0):
         """
         TeleVuer class for OpenXR-based XR teleoperate applications.
         This class handles the communication with the Vuer server and manages image and pose data.
@@ -46,11 +46,28 @@ class TeleVuer:
             self.img_width  = self.img_shape[1]
         self.aspect_ratio = self.img_width / self.img_height
 
-        current_module_dir = Path(__file__).resolve().parent.parent.parent
-        if cert_file is None:
-            cert_file = os.path.join(current_module_dir, "cert.pem")
-        if key_file is None:
-            key_file = os.path.join(current_module_dir, "key.pem")
+        # SSL certificate path resolution
+        env_cert = os.getenv("XR_TELEOP_CERT")
+        env_key = os.getenv("XR_TELEOP_KEY")
+        if cert_file is None or key_file is None:
+            # 1.Try environment variables
+            if env_cert and env_key:
+                cert_file = cert_file or env_cert
+                key_file = key_file or env_key
+            else:
+                # 2.Try ~/.config/xr_teleoperate/
+                user_conf_dir = Path.home() / ".config" / "xr_teleoperate"
+                cert_path_user = user_conf_dir / "cert.pem"
+                key_path_user = user_conf_dir / "key.pem"
+
+                if cert_path_user.exists() and key_path_user.exists():
+                    cert_file = cert_file or str(cert_path_user)
+                    key_file = key_file or str(key_path_user)
+                else:
+                    # 3.Fallback to package root (current logic)
+                    current_module_dir = Path(__file__).resolve().parent.parent.parent
+                    cert_file = cert_file or str(current_module_dir / "cert.pem")
+                    key_file = key_file or str(current_module_dir / "key.pem")
 
         self.vuer = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
         self.vuer.add_handler("CAMERA_MOVE")(self.on_cam_move)
