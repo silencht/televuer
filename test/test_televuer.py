@@ -20,7 +20,7 @@ def run_test_TeleVuer():
                   binocular=camera_config['head_camera']['binocular'],
                   img_shape=camera_config['head_camera']['image_shape'],
                   display_fps=camera_config['head_camera']['fps'],
-                  display_mode="immersive",   # "fov" or "immersive" or "pass-through"
+                  display_mode="immersive",   # "ego" or "immersive" or "pass-through"
                   zmq=camera_config['head_camera']['enable_zmq'],
                   webrtc=camera_config['head_camera']['enable_webrtc'],
                   webrtc_url=f"https://192.168.123.164:{camera_config['head_camera']['webrtc_port']}/offer"
@@ -30,7 +30,7 @@ def run_test_TeleVuer():
     #               binocular=True, 
     #               img_shape=(480, 1280), 
     #               display_fps=30.0,
-    #               display_mode="fov",      # "fov" or "immersive" or "pass-through"
+    #               display_mode="ego",      # "ego" or "immersive" or "pass-through"
     #               zmq=False,
     #               webrtc=True, 
     #               webrtc_url="https://192.168.123.164:60001/offer"

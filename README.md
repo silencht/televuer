@@ -18,11 +18,11 @@ The image input of this library works in conjunction with the [teleimager](https
 
     - pass-through: VR shows the real world through the VR headset cameras; no image from zmq or webrtc is displayed (even if enabled).
 
-    - fov: a small window in the center shows the robot's first-person view, while the surrounding area shows the real world.
+    - ego: a small window in the center shows the robot's first-person view, while the surrounding area shows the real world.
 
 2. Enhanced Immersion
 
-    Adjusted the image plane height for immersive and fov modes to provide a more natural and comfortable VR experience
+    Adjusted the image plane height for immersive and ego modes to provide a more natural and comfortable VR experience
 
 ### V3.0 🏷️ brings updates:
 1. Added `pass_through` interface to enable/disable the pass-through mode.

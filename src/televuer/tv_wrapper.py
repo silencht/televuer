@@ -194,7 +194,7 @@ class TeleData:
 
 class TeleVuerWrapper:
     def __init__(self, use_hand_tracking: bool, binocular: bool=True, img_shape: tuple=(480, 1280), display_fps: float=30.0,
-                       display_mode: Literal["immersive", "pass-through", "fov"]="immersive", zmq: bool=False, webrtc: bool=False, webrtc_url: str=None, 
+                       display_mode: Literal["immersive", "pass-through", "ego"]="immersive", zmq: bool=False, webrtc: bool=False, webrtc_url: str=None, 
                        cert_file: str=None, key_file: str=None, return_hand_rot_data: bool=False):
         """
         TeleVuerWrapper is a wrapper for the TeleVuer class, which handles XR device's data suit for robot control.
@@ -205,7 +205,7 @@ class TeleVuerWrapper:
         :param img_shape: tuple, shape of the head image (height, width).
         :param display_fps: float, target frames per second for display updates (default: 30.0).
 
-        :param display_mode: str, controls the VR viewing mode. Options are "immersive", "pass-through", and "fov".
+        :param display_mode: str, controls the VR viewing mode. Options are "immersive", "pass-through", and "ego".
         :param zmq: bool, whether to use ZMQ for image transmission.
         :param webrtc: bool, whether to use webrtc for real-time communication.
         :param webrtc_url: str, URL for the webrtc offer. must be provided if webrtc is True.
@@ -217,10 +217,10 @@ class TeleVuerWrapper:
         - display_mode controls what the VR headset displays:
             * "immersive": fully immersive mode; VR shows the robot's first-person view (zmq or webrtc must be enabled).
             * "pass-through": VR shows the real world through the VR headset cameras; no image from zmq or webrtc is displayed (even if enabled).
-            * "fov": Field-of-View mode; a small window in the center shows the robot's first-person view, while the surrounding area shows the real world.
+            * "ego": a small window in the center shows the robot's first-person view, while the surrounding area shows the real world.
         
         - Only one image mode is active at a time.
-        - Image transmission to VR occurs only if display_mode is "immersive" or "fov" and the corresponding zmq or webrtc option is enabled.
+        - Image transmission to VR occurs only if display_mode is "immersive" or "ego" and the corresponding zmq or webrtc option is enabled.
         - If zmq and webrtc simultaneously enabled, webrtc will be prioritized.
 
         --------------              -------------------           --------------       -----------------                     -------
@@ -230,7 +230,7 @@ class TeleVuerWrapper:
         --------------              -------------------           --------------       -----------------                     -------
          pass-through       |       Real world view (VR)      |         No         |          N/A             |  even if image source enabled, don't display
         --------------              -------------------           --------------       -----------------                     -------
-              fov           |      FOV view (robot + VR)      |    Yes (small)     |     zmq or webrtc        |   if both enabled, webrtc prioritized
+              ego           |      ego view (robot + VR)      |    Yes (small)     |     zmq or webrtc        |   if both enabled, webrtc prioritized
         --------------              -------------------           --------------       -----------------                     -------
         """
         self.use_hand_tracking = use_hand_tracking

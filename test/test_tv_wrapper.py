@@ -32,7 +32,7 @@ def run_test_tv_wrapper():
     #                              binocular=True, 
     #                              img_shape=(480, 1280),
     #                              display_fps=30.0,
-    #                              display_mode="fov", 
+    #                              display_mode="ego", 
     #                              zmq=True,
     #                              webrtc=True, 
     #                              webrtc_url="https://192.168.123.164:60001/offer"
