@@ -4,13 +4,32 @@ The TeleVuer library is a specialized version of the [Vuer](https://github.com/v
 
 Currently, this module serves as a core component of the [xr_teleoperate](https://github.com/unitreerobotics/xr_teleoperate) library, offering advanced functionality for teleoperation tasks. It supports various XR devices, including Apple Vision Pro, Meta Quest3, Pico 4 Ultra Enterprise etc., ensuring compatibility and ease of use for robotic teleoperation applications.
 
-## Release Note
-V3.0 brings updates:
+The image input of this library works in conjunction with the [teleimager](https://github.com/silencht/teleimager) library. We recommend using both libraries together.
+
+## 0. 🔖 Release Note
+
+### V4.0 🏷️ brings updates:
+
+1. Improved Display Modes
+
+    Removed the old “pass_through” mode. The system now supports three modes:
+
+    - immersive: fully immersive mode; VR shows the robot's first-person view (zmq or webrtc must be enabled).
+
+    - pass-through: VR shows the real world through the VR headset cameras; no image from zmq or webrtc is displayed (even if enabled).
+
+    - fov: a small window in the center shows the robot's first-person view, while the surrounding area shows the real world.
+
+2. Enhanced Immersion
+
+    Adjusted the image plane height for immersive and fov modes to provide a more natural and comfortable VR experience
+
+### V3.0 🏷️ brings updates:
 1. Added `pass_through` interface to enable/disable the pass-through mode.
 2. Support `webrtc` interface to enable/disable the webrtc streaming mode.
 3. Use `render_to_xr` method (adjust from `set_display_image`) to send images to XR device.
 
-V2.0 brings updates:
+### V2.0 🏷️ brings updates:
 
 1. Image transport is now by reference instead of external shared memory.
 2. Renamed the get-data function from `get_motion_state_data` to `get_tele_data`.
@@ -19,7 +38,7 @@ V2.0 brings updates:
 5. Streamlined the data structure: removed the nested `TeleStateData` and return everything in the unified `TeleData`.
 6. Added new image-transport interfaces such as `set_display_image`.
 
-## 1. Diagram
+## 1. 🗺️ Diagram
 
 <p align="center">
   <a href="https://oss-global-cdn.unitree.com/static/5ae3c9ee9a3d40dc9fe002281e8aeac1_2975x3000.png">
@@ -27,9 +46,9 @@ V2.0 brings updates:
   </a>
 </p>
 
-## 2. Install
+## 2. 📦 Install
 
-### 2.1 Install televuer repository
+### 2.1 📥 Install televuer repository
 
 ```bash
 git clone https://github.com/silencht/televuer
@@ -38,7 +57,7 @@ pip install -e . # or pip install .
 ```
 
 
-### 2.2 Generate Certificate Files
+### 2.2 🔑 Generate Certificate Files
 
 The televuer module requires SSL certificates to allow XR devices (such as Pico / Quest / Apple Vision Pro) to connect securely via HTTPS / WebRTC.
 
@@ -73,13 +92,13 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
 # Use AirDrop to copy rootCA.pem to your Apple Vision Pro device and install it manually as a trusted certificate.
 ```
 
-3. Allow Firewall Access
+3. 🧱 Allow Firewall Access
 
 ```bash
 sudo ufw allow 8012
 ```
 
-### 2.3 Configure Certificate Paths (Choose One Method)
+### 2.3 🔐 Configure Certificate Paths (Choose One Method)
 
 You can tell televuer where to find the certificate files using either environment variables or a user config directory.
 
@@ -105,7 +124,7 @@ cp cert.pem key.pem ~/.config/xr_teleoperate/
 
 If neither of the above methods is used, televuer will look for the certificate files from the function parameters or fall back to the default paths within the module.
 
-## 3. Test
+## 3. 🧐 Test
 
 ```bash
 python test_televuer.py 
@@ -120,7 +139,7 @@ python test_tv_wrapper.py
 # Press Enter in the terminal to launch the program.
 ```
 
-## 4. Version History
+## 4. 📌 Version History
 
 `vuer==0.0.32rc7`
 

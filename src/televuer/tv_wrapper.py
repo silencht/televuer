@@ -1,7 +1,7 @@
 import numpy as np
 from .televuer import TeleVuer
 from dataclasses import dataclass, field
-
+from typing import Literal
 """
 (basis) OpenXR Convention : y up, z back, x right. 
 (basis) Robot  Convention : z up, y left, x front.  
@@ -193,35 +193,51 @@ class TeleData:
 
 
 class TeleVuerWrapper:
-    def __init__(self, use_hand_tracking: bool, pass_through: bool=False, binocular: bool=True, img_shape: tuple=(480, 1280),
-                       cert_file: str=None, key_file: str=None, webrtc: bool=False, webrtc_url: str=None, display_fps: float=30.0,
-                       return_hand_rot_data: bool=False):
+    def __init__(self, use_hand_tracking: bool, binocular: bool=True, img_shape: tuple=(480, 1280), display_fps: float=30.0,
+                       display_mode: Literal["immersive", "pass-through", "fov"]="immersive", zmq: bool=False, webrtc: bool=False, webrtc_url: str=None, 
+                       cert_file: str=None, key_file: str=None, return_hand_rot_data: bool=False):
         """
         TeleVuerWrapper is a wrapper for the TeleVuer class, which handles XR device's data suit for robot control.
         It initializes the TeleVuer instance with the specified parameters and provides a method to get motion state data.
 
         :param use_hand_tracking: bool, whether to use hand tracking or controller tracking.
-        :param pass_through: bool, controls the VR viewing mode.
-
-            Note:
-            - if pass_through is True, the XR user will see the real world through the VR headset cameras.
-            - if pass_through is False, the XR user will see the images provided by webrtc or render_to_xr method:
-            - webrtc is prior to render_to_xr. if webrtc is True, the class will use webrtc for image transmission.
-            - if webrtc is False, the class will use render_to_xr for image transmission.
-    
         :param binocular: bool, whether the application is binocular (stereoscopic) or monocular.
         :param img_shape: tuple, shape of the head image (height, width).
+        :param display_fps: float, target frames per second for display updates (default: 30.0).
+
+        :param display_mode: str, controls the VR viewing mode. Options are "immersive", "pass-through", and "fov".
+        :param zmq: bool, whether to use ZMQ for image transmission.
+        :param webrtc: bool, whether to use webrtc for real-time communication.
+        :param webrtc_url: str, URL for the webrtc offer. must be provided if webrtc is True.
         :param cert_file: str, path to the SSL certificate file.
         :param key_file: str, path to the SSL key file.
-        :param webrtc: bool, whether to use WebRTC for real-time communication. if False, use ImageBackground.
-        :param webrtc_url: str, URL for the WebRTC offer.
-        :param display_fps: float, target frames per second for display updates (default: 30.0).
-        :param return_hand_rot_data: bool, whether to return hand rotation data in TeleData
+
+        Note:
+
+        - display_mode controls what the VR headset displays:
+            * "immersive": fully immersive mode; VR shows the robot's first-person view (zmq or webrtc must be enabled).
+            * "pass-through": VR shows the real world through the VR headset cameras; no image from zmq or webrtc is displayed (even if enabled).
+            * "fov": Field-of-View mode; a small window in the center shows the robot's first-person view, while the surrounding area shows the real world.
+        
+        - Only one image mode is active at a time.
+        - Image transmission to VR occurs only if display_mode is "immersive" or "fov" and the corresponding zmq or webrtc option is enabled.
+        - If zmq and webrtc simultaneously enabled, webrtc will be prioritized.
+
+        --------------              -------------------           --------------       -----------------                     -------
+         display_mode       |        display behavior         |    image to VR     |      image source        |               Notes
+        --------------              -------------------           --------------       -----------------                     ------- 
+           immersive        |   fully immersive view (robot)  |     Yes (full)     |     zmq or webrtc        |   if both enabled, webrtc prioritized
+        --------------              -------------------           --------------       -----------------                     -------
+         pass-through       |       Real world view (VR)      |         No         |          N/A             |  even if image source enabled, don't display
+        --------------              -------------------           --------------       -----------------                     -------
+              fov           |      FOV view (robot + VR)      |    Yes (small)     |     zmq or webrtc        |   if both enabled, webrtc prioritized
+        --------------              -------------------           --------------       -----------------                     -------
         """
         self.use_hand_tracking = use_hand_tracking
         self.return_hand_rot_data = return_hand_rot_data
-        self.tvuer = TeleVuer(use_hand_tracking=use_hand_tracking, pass_through=pass_through, binocular=binocular,img_shape=img_shape,
-                              cert_file=cert_file, key_file=key_file, webrtc=webrtc, webrtc_url=webrtc_url, display_fps=display_fps)
+        self.tvuer = TeleVuer(use_hand_tracking=use_hand_tracking, binocular=binocular, img_shape=img_shape, display_fps=display_fps,
+                              display_mode=display_mode, zmq=zmq, webrtc=webrtc, webrtc_url=webrtc_url, 
+                              cert_file=cert_file, key_file=key_file)
         
     def get_tele_data(self):
         """

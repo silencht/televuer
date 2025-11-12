@@ -7,38 +7,57 @@ import threading
 import cv2
 import os
 from pathlib import Path
+from typing import Literal
 
 
 class TeleVuer:
-    def __init__(self, use_hand_tracking: bool, pass_through:bool=False, binocular: bool=True, img_shape: tuple=None, 
-                       cert_file: str=None, key_file: str=None, webrtc: bool=False, webrtc_url: str=None, display_fps: float=30.0):
+    def __init__(self, use_hand_tracking: bool, binocular: bool=True, img_shape: tuple=None, display_fps: float=30.0,
+                       display_mode: Literal["immersive", "pass-through", "fov"]="immersive", zmq: bool=False, webrtc: bool=False, webrtc_url: str=None, 
+                       cert_file: str=None, key_file: str=None):
         """
         TeleVuer class for OpenXR-based XR teleoperate applications.
         This class handles the communication with the Vuer server and manages image and pose data.
 
         :param use_hand_tracking: bool, whether to use hand tracking or controller tracking.
-        :param pass_through: bool, controls the VR viewing mode.
-
-            Note:
-            - if pass_through is True, the XR user will see the real world through the VR headset cameras.
-            - if pass_through is False, the XR user will see the images provided by webrtc or render_to_xr method:
-            - webrtc is prior to render_to_xr. if webrtc is True, the class will use webrtc for image transmission.
-            - if webrtc is False, the class will use render_to_xr for image transmission.
-    
         :param binocular: bool, whether the application is binocular (stereoscopic) or monocular.
         :param img_shape: tuple, shape of the head image (height, width).
+        :param display_fps: float, target frames per second for display updates (default: 30.0).
+        
+        :param display_mode: str, controls the VR viewing mode. Options are "immersive", "pass-through", and "fov".
+        :param zmq: bool, whether to use zmq for image transmission.
+        :param webrtc: bool, whether to use webrtc for real-time communication.
+        :param webrtc_url: str, URL for the webrtc offer. must be provided if webrtc is True.
         :param cert_file: str, path to the SSL certificate file.
         :param key_file: str, path to the SSL key file.
-        :param webrtc: bool, whether to use WebRTC for real-time communication. if False, use ImageBackground.
-        :param webrtc_url: str, URL for the WebRTC offer.
-        :param display_fps: float, target frames per second for display updates (default: 30.0).
+
+        Note:
+
+        - display_mode controls what the VR headset displays:
+            * "immersive": fully immersive mode; VR shows the robot's first-person view (zmq or webrtc must be enabled).
+            * "pass-through": VR shows the real world through the VR headset cameras; no image from zmq or webrtc is displayed (even if enabled).
+            * "fov": Field-of-View mode; a small window in the center shows the robot's first-person view, while the surrounding area shows the real world.
+        
+        - Only one image mode is active at a time.
+        - Image transmission to VR occurs only if display_mode is "immersive" or "fov" and the corresponding zmq or webrtc option is enabled.
+        - If zmq and webrtc simultaneously enabled, webrtc will be prioritized.
+
+        --------------              -------------------           --------------       -----------------                     -------
+         display_mode       |        display behavior         |    image to VR     |      image source        |               Notes
+        --------------              -------------------           --------------       -----------------                     ------- 
+           immersive        |   fully immersive view (robot)  |     Yes (full)     |     zmq or webrtc        |   if both enabled, webrtc prioritized
+        --------------              -------------------           --------------       -----------------                     -------
+         pass-through       |       Real world view (VR)      |         No         |          N/A             |  even if image source enabled, don't display
+        --------------              -------------------           --------------       -----------------                     -------
+              fov           |      FOV view (robot + VR)      |    Yes (small)     |     zmq or webrtc        |   if both enabled, webrtc prioritized
+        --------------              -------------------           --------------       -----------------                     -------
+
         """
         self.use_hand_tracking = use_hand_tracking
-        self.display_fps = display_fps
-        self.pass_through = pass_through
-
         self.binocular = binocular
+        if img_shape is None:
+            raise ValueError("[TeleVuer] img_shape must be provided.")
         self.img_shape = (img_shape[0], img_shape[1], 3)
+        self.display_fps = display_fps
         self.img_height = self.img_shape[0]
         if self.binocular:
             self.img_width  = self.img_shape[1] // 2
@@ -76,16 +95,15 @@ class TeleVuer:
         else:
             self.vuer.add_handler("CONTROLLER_MOVE")(self.on_controller_move)
 
+        self.display_mode = display_mode
+        self.zmq = zmq
         self.webrtc = webrtc
         self.webrtc_url = webrtc_url
 
-        if self.webrtc:
-            if self.binocular:
-                self.vuer.spawn(start=False)(self.main_image_binocular_webrtc)
-            else:
-                self.vuer.spawn(start=False)(self.main_image_monocular_webrtc)
-        else:
-            if self.pass_through is False:
+        if self.display_mode == "immersive":
+            if self.webrtc:
+                fn = self.main_image_binocular_webrtc if self.binocular else self.main_image_monocular_webrtc
+            elif self.zmq:
                 self.img2display_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.img_shape) * np.uint8().itemsize)
                 self.img2display = np.ndarray(self.img_shape, dtype=np.uint8, buffer=self.img2display_shm.buf)
                 self.latest_frame = None
@@ -93,10 +111,29 @@ class TeleVuer:
                 self.stop_writer_event = threading.Event()
                 self.writer_thread = threading.Thread(target=self._xr_render_loop, daemon=True)
                 self.writer_thread.start()
-            if self.binocular:
-                 self.vuer.spawn(start=False)(self.main_image_binocular)
+                fn = self.main_image_binocular_zmq if self.binocular else self.main_image_monocular_zmq
             else:
-                 self.vuer.spawn(start=False)(self.main_image_monocular)
+                raise ValueError("[TeleVuer] immersive mode requires zmq=True or webrtc=True.")
+        elif self.display_mode == "fov":
+            if self.webrtc:
+                fn = self.main_image_binocular_webrtc_fov if self.binocular else self.main_image_monocular_webrtc_fov
+            elif self.zmq:
+                self.img2display_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.img_shape) * np.uint8().itemsize)
+                self.img2display = np.ndarray(self.img_shape, dtype=np.uint8, buffer=self.img2display_shm.buf)
+                self.latest_frame = None
+                self.new_frame_event = threading.Event()
+                self.stop_writer_event = threading.Event()
+                self.writer_thread = threading.Thread(target=self._xr_render_loop, daemon=True)
+                self.writer_thread.start()
+                fn = self.main_image_binocular_zmq_fov if self.binocular else self.main_image_monocular_zmq_fov
+            else:
+                raise ValueError("[TeleVuer] fov mode requires zmq=True or webrtc=True.")
+        elif self.display_mode == "pass-through":
+            fn = self.main_pass_through
+        else:
+            raise ValueError(f"[TeleVuer] Unknown display_mode: {self.display_mode}")
+        
+        self.vuer.spawn(start=False)(fn)
 
         self.head_pose_shared = Array('d', 16, lock=True)
         self.left_arm_pose_shared = Array('d', 16, lock=True)
@@ -162,7 +199,7 @@ class TeleVuer:
             self.img2display[:] = latest_frame
     
     def render_to_xr(self, image):
-        if self.webrtc or self.pass_through:
+        if self.webrtc or self.display_mode == "pass-through":
             print("[TeleVuer] Warning: render_to_xr is ignored when webrtc is enabled or pass_through is True.")
             return
         self.latest_frame = image
@@ -171,7 +208,7 @@ class TeleVuer:
     def close(self):
         self.process.terminate()
         self.process.join(timeout=0.5)
-        if not self.webrtc and not self.pass_through:
+        if self.display_mode in ("immersive", "fov") and not self.webrtc:
             self.stop_writer_event.set()
             self.new_frame_event.set()
             self.writer_thread.join(timeout=0.5)
@@ -274,7 +311,8 @@ class TeleVuer:
         except:
             pass
     
-    async def main_image_binocular(self, session):
+    ## immersive MODE
+    async def main_image_binocular_zmq(self, session):
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -296,41 +334,40 @@ class TeleVuer:
                 to="bgChildren",
             )
         while True:
-            if self.pass_through is False:
-                session.upsert(
-                    [
-                        ImageBackground(
-                            self.img2display[:, :self.img_width],
-                            aspect=self.aspect_ratio,
-                            height=1,
-                            distanceToCamera=1,
-                            # The underlying rendering engine supported a layer binary bitmask for both objects and the camera. 
-                            # Below we set the two image planes, left and right, to layers=1 and layers=2. 
-                            # Note that these two masks are associated with left eye’s camera and the right eye’s camera.
-                            layers=1,
-                            format="jpeg",
-                            quality=80,
-                            key="background-left",
-                            interpolate=True,
-                        ),
-                        ImageBackground(
-                            self.img2display[:, self.img_width:],
-                            aspect=self.aspect_ratio,
-                            height=1,
-                            distanceToCamera=1,
-                            layers=2,
-                            format="jpeg",
-                            quality=80,
-                            key="background-right",
-                            interpolate=True,
-                        ),
-                    ],
-                    to="bgChildren",
-                )
+            session.upsert(
+                [
+                    ImageBackground(
+                        self.img2display[:, :self.img_width],
+                        aspect=self.aspect_ratio,
+                        height=1,
+                        distanceToCamera=1,
+                        # The underlying rendering engine supported a layer binary bitmask for both objects and the camera. 
+                        # Below we set the two image planes, left and right, to layers=1 and layers=2. 
+                        # Note that these two masks are associated with left eye’s camera and the right eye’s camera.
+                        layers=1,
+                        format="jpeg",
+                        quality=80,
+                        key="background-left",
+                        interpolate=True,
+                    ),
+                    ImageBackground(
+                        self.img2display[:, self.img_width:],
+                        aspect=self.aspect_ratio,
+                        height=1,
+                        distanceToCamera=1,
+                        layers=2,
+                        format="jpeg",
+                        quality=80,
+                        key="background-right",
+                        interpolate=True,
+                    ),
+                ],
+                to="bgChildren",
+            )
             # 'jpeg' encoding should give you about 30fps with a 16ms wait in-between.
             await asyncio.sleep(1.0 / self.display_fps)
 
-    async def main_image_monocular(self, session):
+    async def main_image_monocular_zmq(self, session):
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -353,22 +390,21 @@ class TeleVuer:
             )
 
         while True:
-            if self.pass_through is False:
-                session.upsert(
-                    [
-                        ImageBackground(
-                            self.img2display,
-                            aspect=self.aspect_ratio,
-                            height=1,
-                            distanceToCamera=1,
-                            format="jpeg",
-                            quality=80,
-                            key="background-mono",
-                            interpolate=True,
-                        ),
-                    ],
-                    to="bgChildren",
-                )
+            session.upsert(
+                [
+                    ImageBackground(
+                        self.img2display,
+                        aspect=self.aspect_ratio,
+                        height=1,
+                        distanceToCamera=1,
+                        format="jpeg",
+                        quality=80,
+                        key="background-mono",
+                        interpolate=True,
+                    ),
+                ],
+                to="bgChildren",
+            )
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_binocular_webrtc(self, session):
@@ -394,20 +430,18 @@ class TeleVuer:
             )
 
         while True:
-            if self.pass_through is False:
-                session.upsert(
-                    WebRTCStereoVideoPlane(
-                        src=self.webrtc_url,
-                        iceServer=None,
-                        iceServers=[], 
-                        key="video-quad",
-                        aspect=self.aspect_ratio,
-                        height = 7,
-                        layout="stereo-left-right"
-                    ),
-                    to="bgChildren",
-                )
-
+            session.upsert(
+                WebRTCStereoVideoPlane(
+                    src=self.webrtc_url,
+                    iceServer=None,
+                    iceServers=[], 
+                    key="video-quad",
+                    aspect=self.aspect_ratio,
+                    height = 7,
+                    layout="stereo-left-right"
+                ),
+                to="bgChildren",
+            )
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_webrtc(self, session):
@@ -433,20 +467,214 @@ class TeleVuer:
             )
 
         while True:
-            if self.pass_through is False:
-                session.upsert(
-                    WebRTCVideoPlane(
-                        src=self.webrtc_url,
-                        iceServer=None,
-                        iceServers=[],
-                        key="video-quad",
-                        aspect=self.aspect_ratio,
-                        height = 7,
-                    ),
-                    to="bgChildren",
-                )
-
+            session.upsert(
+                WebRTCVideoPlane(
+                    src=self.webrtc_url,
+                    iceServer=None,
+                    iceServers=[],
+                    key="video-quad",
+                    aspect=self.aspect_ratio,
+                    height = 7,
+                ),
+                to="bgChildren",
+            )
             await asyncio.sleep(1.0 / self.display_fps)
+
+    ## FOV MODE
+    async def main_image_binocular_zmq_fov(self, session):
+        if self.use_hand_tracking:
+            session.upsert(
+                Hands(
+                    stream=True,
+                    key="hands",
+                    hideLeft=True,
+                    hideRight=True
+                ),
+                to="bgChildren",
+            )
+        else:
+            session.upsert(
+                MotionControllers(
+                    stream=True,
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
+        while True:
+            session.upsert(
+                [
+                    ImageBackground(
+                        self.img2display[:, :self.img_width],
+                        aspect=self.aspect_ratio,
+                        height=0.75,
+                        distanceToCamera=2,
+                        # The underlying rendering engine supported a layer binary bitmask for both objects and the camera. 
+                        # Below we set the two image planes, left and right, to layers=1 and layers=2. 
+                        # Note that these two masks are associated with left eye’s camera and the right eye’s camera.
+                        layers=1,
+                        format="jpeg",
+                        quality=80,
+                        key="background-left",
+                        interpolate=True,
+                    ),
+                    ImageBackground(
+                        self.img2display[:, self.img_width:],
+                        aspect=self.aspect_ratio,
+                        height=0.75,
+                        distanceToCamera=2,
+                        layers=2,
+                        format="jpeg",
+                        quality=80,
+                        key="background-right",
+                        interpolate=True,
+                    ),
+                ],
+                to="bgChildren",
+            )
+            # 'jpeg' encoding should give you about 30fps with a 16ms wait in-between.
+            await asyncio.sleep(1.0 / self.display_fps)
+
+    async def main_image_monocular_zmq_fov(self, session):
+        if self.use_hand_tracking:
+            session.upsert(
+                Hands(
+                    stream=True,
+                    key="hands",
+                    hideLeft=True,
+                    hideRight=True
+                ),
+                to="bgChildren",
+            )
+        else:
+            session.upsert(
+                MotionControllers(
+                    stream=True, 
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
+
+        while True:
+            session.upsert(
+                [
+                    ImageBackground(
+                        self.img2display,
+                        aspect=self.aspect_ratio,
+                        height=0.75,
+                        distanceToCamera=2,
+                        format="jpeg",
+                        quality=80,
+                        key="background-mono",
+                        interpolate=True,
+                    ),
+                ],
+                to="bgChildren",
+            )
+            await asyncio.sleep(1.0 / self.display_fps)
+
+    async def main_image_binocular_webrtc_fov(self, session):
+        if self.use_hand_tracking:
+            session.upsert(
+                Hands(
+                    stream=True,
+                    key="hands",
+                    hideLeft=True,
+                    hideRight=True
+                ),
+                to="bgChildren",
+            )
+        else:
+            session.upsert(
+                MotionControllers(
+                    stream=True, 
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
+
+        while True:
+            session.upsert(
+                WebRTCStereoVideoPlane(
+                    src=self.webrtc_url,
+                    iceServer=None,
+                    iceServers=[], 
+                    key="video-quad",
+                    aspect=self.aspect_ratio,
+                    height=3,
+                    layout="stereo-left-right"
+                ),
+                to="bgChildren",
+            )
+            await asyncio.sleep(1.0 / self.display_fps)
+
+    async def main_image_monocular_webrtc_fov(self, session):
+        if self.use_hand_tracking:
+            session.upsert(
+                Hands(
+                    stream=True,
+                    key="hands",
+                    hideLeft=True,
+                    hideRight=True
+                ),
+                to="bgChildren",
+            )
+        else:
+            session.upsert(
+                MotionControllers(
+                    stream=True, 
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
+
+        while True:
+            session.upsert(
+                WebRTCVideoPlane(
+                    src=self.webrtc_url,
+                    iceServer=None,
+                    iceServers=[],
+                    key="video-quad",
+                    aspect=self.aspect_ratio,
+                    height=3,
+                ),
+                to="bgChildren",
+            )
+            await asyncio.sleep(1.0 / self.display_fps)
+
+    ## pass-through MODE
+    async def main_pass_through(self, session):
+        if self.use_hand_tracking:
+            session.upsert(
+                Hands(
+                    stream=True,
+                    key="hands",
+                    hideLeft=True,
+                    hideRight=True
+                ),
+                to="bgChildren",
+            )
+        else:
+            session.upsert(
+                MotionControllers(
+                    stream=True, 
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
+
+        while True:
+            await asyncio.sleep(1.0 / self.display_fps)
+
     # ==================== common data ====================
     @property
     def head_pose(self):
