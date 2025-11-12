@@ -83,6 +83,8 @@ sudo ufw allow 8012
 
 You can tell televuer where to find the certificate files using either environment variables or a user config directory.
 
+This configuaration could be shared with [teleimager](https://github.com/silencht/teleimager) module in [xr_teleoperate](https://github.com/unitreerobotics/xr_teleoperate) repo.
+
 1. Environment Variable Configuration (Optional)
 
 ```bash
